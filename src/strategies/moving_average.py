@@ -36,9 +36,15 @@ class MovingAverageStrategy:
         df.loc[df['SMA_short'] > df['SMA_long'], 'Signal'] = 1  # Buy signal
         df.loc[df['SMA_short'] < df['SMA_long'], 'Signal'] = -1  # Sell signal
         
-        # Calculate returns
+        # Calculate returns with transaction costs
         df['Returns'] = df['Close'].pct_change()
-        df['Strategy_Returns'] = df['Signal'].shift(1) * df['Returns']
+        
+        # Add transaction costs (spread + commission)
+        df['Signal_Change'] = df['Signal'].diff().abs()  # Detect trades
+        df['Transaction_Costs'] = df['Signal_Change'] * 0.0015  # 15 bps per trade (10 bps spread + 5 bps commission)
+        
+        # Calculate strategy returns net of costs
+        df['Strategy_Returns'] = df['Signal'].shift(1) * df['Returns'] - df['Transaction_Costs']
         
         return df
     
