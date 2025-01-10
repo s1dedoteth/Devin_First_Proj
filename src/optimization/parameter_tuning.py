@@ -68,27 +68,56 @@ def grid_search_parameters(
                                 'n_estimators': n_estimators
                             }
                         )
-        
-        try:
-            # Train and evaluate
-            train_metrics = agent.train(df)
-            performance = agent.backtest(df)
-            
-            # Create detailed results dictionary
-            result_dict = {
-                'short_window': short_window,
-                'long_window': long_window,
-                'ml_weight': ml_weight,
-                'max_depth': str(max_depth),  # Convert None to string for CSV
-                'min_samples_split': min_samples_split,
-                'n_estimators': n_estimators,
-                'sharpe_ratio': performance['sharpe_ratio'],
-                'total_return': performance['total_return'],
-                'max_drawdown': performance['max_drawdown'],
-                'train_accuracy': train_metrics['train_accuracy'],
-                'test_accuracy': train_metrics['test_accuracy']
-            }
-            results.append(result_dict)
+                        
+                        try:
+                            # Train and evaluate
+                            train_metrics = agent.train(df)
+                            performance = agent.backtest(df)
+                            
+                            # Create detailed results dictionary with explicit float conversion
+                            result_dict = {
+                                'short_window': short_window,
+                                'long_window': long_window,
+                                'ml_weight': ml_weight,
+                                'max_depth': str(max_depth),  # Convert None to string for CSV
+                                'min_samples_split': min_samples_split,
+                                'n_estimators': n_estimators,
+                                'sharpe_ratio': float(performance['sharpe_ratio']),
+                                'total_return': float(performance['total_return']),
+                                'max_drawdown': float(performance['max_drawdown']),
+                                'train_accuracy': float(train_metrics['train_accuracy']),
+                                'test_accuracy': float(train_metrics['test_accuracy'])
+                            }
+                            results.append(result_dict)
+                            
+                            # Save intermediate results every 10 combinations
+                            if current_combination % 10 == 0:
+                                pd.DataFrame(results).to_csv('optimization_results_interim.csv', index=False)
+                            
+                            # Update best parameters if better Sharpe ratio found
+                            if performance['sharpe_ratio'] > best_sharpe:
+                                best_sharpe = float(performance['sharpe_ratio'])
+                                best_params = {
+                                    'short_window': short_window,
+                                    'long_window': long_window,
+                                    'ml_weight': ml_weight,
+                                    'max_depth': max_depth,
+                                    'min_samples_split': min_samples_split,
+                                    'n_estimators': n_estimators,
+                                    'performance': performance,
+                                    'train_metrics': train_metrics
+                                }
+                                print("\nNew best parameters found!")
+                            
+                            print(f"Sharpe: {performance['sharpe_ratio']:.3f}, "
+                                  f"Return: {performance['total_return']:.2%}, "
+                                  f"Drawdown: {performance['max_drawdown']:.2%}, "
+                                  f"Train Acc: {train_metrics['train_accuracy']:.2%}, "
+                                  f"Test Acc: {train_metrics['test_accuracy']:.2%}")
+                            
+                        except Exception as e:
+                            print(f"Error with parameters: {str(e)}")
+                            continue
             
             # Save intermediate results every 10 combinations
             if current_combination % 10 == 0:

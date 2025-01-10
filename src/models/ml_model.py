@@ -27,13 +27,18 @@ class MLModel:
             **kwargs: Additional RandomForest parameters
         """
         # Define feature columns as class attribute
+        # Keep only features with >2% importance based on analysis
         self.feature_cols = [
-            'Returns', 'Volatility', 'Volume_Ratio',
-            'RSI', 'MACD', 'ADX',
-            'BB_Width', 'BB_Position',
-            'OBV', 'Force_Index',
-            'MA_Ratio_5', 'MA_Ratio_10',
-            'MA_Ratio_20', 'MA_Ratio_50'
+            'OBV',           # 39.74%
+            'MA_Ratio_50',   # 11.57%
+            'Volatility',    # 10.93%
+            'BB_Width',      # 9.02%
+            'ADX',           # 7.76%
+            'MACD',          # 6.13%
+            'MA_Ratio_20',   # 3.33%
+            'Force_Index',   # 2.65%
+            'RSI',           # 2.36%
+            'BB_Position'    # 2.32%
         ]
         self.model = RandomForestClassifier(
             n_estimators=n_estimators,
