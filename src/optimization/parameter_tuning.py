@@ -1,8 +1,11 @@
 import pandas as pd
 import numpy as np
 from itertools import product
-from typing import Dict, List, Tuple, Optional, Union
+from typing import Dict, List, Tuple, Optional, Union, Any
 from src.models.trading_agent import TradingAgent
+
+# Configure pandas display options
+pd.set_option('display.float_format', lambda x: '%.3f' % x)
 
 def grid_search_parameters(
     df: pd.DataFrame,
@@ -12,7 +15,7 @@ def grid_search_parameters(
     max_depths: List[Optional[int]] = [3, 5, 8, 10, None],
     min_samples_splits: List[int] = [2, 5, 10],
     n_estimators_list: List[int] = [50, 100, 200]
-) -> Dict:
+) -> Dict[str, Any]:
     """
     Perform grid search over strategy parameters
     
@@ -166,23 +169,29 @@ def grid_search_parameters(
 
 def main():
     """Run parameter optimization"""
-    # Load data
-    df = pd.read_csv('data/MMM_data.csv', index_col='Date', parse_dates=True)
-    
-    # Run grid search
-    best_params = grid_search_parameters(df)
-    
-    print("\nBest Parameters Found:")
-    print(f"Short Window: {best_params['short_window']}")
-    print(f"Long Window: {best_params['long_window']}")
-    print(f"ML Weight: {best_params['ml_weight']}")
-    print("\nPerformance:")
-    print(f"Sharpe Ratio: {best_params['performance']['sharpe_ratio']:.3f}")
-    print(f"Total Return: {best_params['performance']['total_return']:.2%}")
-    print(f"Max Drawdown: {best_params['performance']['max_drawdown']:.2%}")
-    print("\nML Metrics:")
-    print(f"Train Accuracy: {best_params['train_metrics']['train_accuracy']:.2%}")
-    print(f"Test Accuracy: {best_params['train_metrics']['test_accuracy']:.2%}")
+    try:
+        # Load data
+        df = pd.read_csv('data/MMM_data.csv', index_col='Date', parse_dates=True)
+        
+        # Run grid search
+        best_params = grid_search_parameters(df)
+        
+        print("\nBest Parameters Found:")
+        print(f"Short Window: {best_params['short_window']}")
+        print(f"Long Window: {best_params['long_window']}")
+        print(f"ML Weight: {best_params['ml_weight']}")
+        print(f"Max Depth: {best_params['max_depth']}")
+        print(f"Min Samples Split: {best_params['min_samples_split']}")
+        print(f"N Estimators: {best_params['n_estimators']}")
+        print("\nPerformance:")
+        print(f"Sharpe Ratio: {best_params['performance']['sharpe_ratio']:.3f}")
+        print(f"Total Return: {best_params['performance']['total_return']:.2%}")
+        print(f"Max Drawdown: {best_params['performance']['max_drawdown']:.2%}")
+        print("\nML Metrics:")
+        print(f"Train Accuracy: {best_params['train_metrics']['train_accuracy']:.2%}")
+        print(f"Test Accuracy: {best_params['train_metrics']['test_accuracy']:.2%}")
+    except Exception as e:
+        print(f"Error in main: {str(e)}")
 
 if __name__ == "__main__":
     main()
