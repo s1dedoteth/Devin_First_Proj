@@ -4,6 +4,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from .models import Base, Stock, StockPrice, SuppressionScore
 from .services.stock_service import StockService
+from .services.suppression_service import SuppressionService
 from .services.scheduler import setup_scheduler
 
 # PostgreSQL database configuration
@@ -58,9 +59,20 @@ async def update_stocks(db: Session = Depends(get_db)):
     try:
         stock_service = StockService(db)
         stock_service.update_all_data()
-        return {"status": "success", "message": "Stock data update initiated"}
+        
+        # After updating stock data, analyze suppression patterns
+        suppression_service = SuppressionService(db)
+        suppression_service.analyze_all_stocks()
+        
+        return {
+            "status": "success", 
+            "message": "Stock data and suppression analysis completed"
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update stock data: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to update stock data: {str(e)}"
+        )
 
 @app.get("/api/stocks")
 async def get_stocks(db: Session = Depends(get_db)):
