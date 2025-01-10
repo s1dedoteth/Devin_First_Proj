@@ -94,7 +94,7 @@ def plot_performance_analysis(df: pd.DataFrame, save_path: str = 'analysis_plots
 def main():
     """Run strategy analysis"""
     # Load data
-    df = pd.read_csv('../../data/MMM_data.csv', index_col='Date', parse_dates=True)
+    df = pd.read_csv('data/MMM_data.csv', index_col='Date', parse_dates=True)
     
     # Initialize and run trading agent
     agent = TradingAgent(short_window=20, long_window=50, ml_weight=0.6)

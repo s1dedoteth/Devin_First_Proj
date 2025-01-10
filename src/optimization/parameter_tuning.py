@@ -2,9 +2,7 @@ import pandas as pd
 import numpy as np
 from itertools import product
 from typing import Dict, List, Tuple, Optional, Union
-import sys
-sys.path.append('..')
-from models.trading_agent import TradingAgent
+from src.models.trading_agent import TradingAgent
 
 def grid_search_parameters(
     df: pd.DataFrame,
@@ -98,7 +96,7 @@ def grid_search_parameters(
 def main():
     """Run parameter optimization"""
     # Load data
-    df = pd.read_csv('../../data/MMM_data.csv', index_col='Date', parse_dates=True)
+    df = pd.read_csv('data/MMM_data.csv', index_col='Date', parse_dates=True)
     
     # Run grid search
     best_params = grid_search_parameters(df)
