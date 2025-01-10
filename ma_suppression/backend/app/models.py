@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -19,22 +19,34 @@ class StockPrice(Base):
     __tablename__ = "stock_prices"
     
     id = Column(Integer, primary_key=True, index=True)
-    stock_id = Column(Integer, ForeignKey("stocks.id"))
+    stock_id = Column(Integer, ForeignKey("stocks.id"), index=True)
     date = Column(Date, index=True)
     open = Column(Float)
     high = Column(Float)
     low = Column(Float)
-    close = Column(Float)
+    close = Column(Float, index=True)  # Index for quick price lookups
     stock = relationship("Stock", back_populates="prices")
+    
+    __table_args__ = (
+        # Composite index for efficient time series queries
+        Index('idx_stock_date', 'stock_id', 'date'),
+    )
 
 class SuppressionScore(Base):
     __tablename__ = "suppression_scores"
     
     id = Column(Integer, primary_key=True, index=True)
-    stock_id = Column(Integer, ForeignKey("stocks.id"))
-    ma_period = Column(Integer)  # e.g., 20 for MA20
-    score = Column(Float)
+    stock_id = Column(Integer, ForeignKey("stocks.id"), index=True)
+    ma_period = Column(Integer, index=True)  # e.g., 20 for MA20
+    score = Column(Float, index=True)  # Index for sorting by score
     contacts = Column(Integer)  # Number of contacts with MA
     breakthroughs = Column(Integer)  # Number of breakthroughs
     avg_deviation = Column(Float)  # Average deviation from MA
     stock = relationship("Stock", back_populates="suppression_scores")
+    
+    __table_args__ = (
+        # Composite index for efficient filtering and sorting
+        Index('idx_stock_score', 'stock_id', 'score'),
+        # Index for finding best MA period
+        Index('idx_stock_ma', 'stock_id', 'ma_period'),
+    )

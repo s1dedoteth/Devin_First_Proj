@@ -1,11 +1,11 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from .models import Base, Stock, StockPrice, SuppressionScore
 
 # PostgreSQL database configuration
-SQLALCHEMY_DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/ma_suppression"
+SQLALCHEMY_DATABASE_URL = "postgresql://devin:devin123@localhost:5432/ma_suppression"
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -33,4 +33,9 @@ def get_db():
 
 @app.get("/healthz")
 async def healthz(db: Session = Depends(get_db)):
-    return {"status": "ok", "database": "connected"}
+    try:
+        # Test database connection
+        db.execute("SELECT 1")
+        return {"status": "ok", "database": "connected"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database connection failed: {str(e)}")
