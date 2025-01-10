@@ -21,6 +21,9 @@ def grid_search_parameters(
         short_windows: List of short MA windows to test
         long_windows: List of long MA windows to test
         ml_weights: List of ML signal weights to test
+        max_depths: List of max tree depths to test
+        min_samples_splits: List of min samples split values
+        n_estimators_list: List of number of trees to test
         
     Returns:
         Dict containing best parameters and their performance
@@ -29,44 +32,67 @@ def grid_search_parameters(
     best_params = {}
     results = []
     
-    # Generate all parameter combinations
-    param_combinations = [
-        (short, long, weight, max_depth, min_samples_split, n_estimators)
-        for short, long, weight, max_depth, min_samples_split, n_estimators 
-        in product(short_windows, long_windows, ml_weights, max_depths, min_samples_splits, n_estimators_list)
+    # Generate valid parameter combinations
+    valid_ma_pairs = [
+        (short, long) 
+        for short, long in product(short_windows, long_windows)
         if short < long  # Ensure short window is less than long window
     ]
     
-    for short_window, long_window, ml_weight, max_depth, min_samples_split, n_estimators in param_combinations:
-        print(f"\nTesting parameters: Short={short_window}, Long={long_window}, ML Weight={ml_weight}")
-        
-        # Initialize and train agent with ML hyperparameters
-        agent = TradingAgent(
-            short_window=short_window,
-            long_window=long_window,
-            ml_weight=ml_weight,
-            ml_params={
-                'max_depth': max_depth,
-                'min_samples_split': min_samples_split,
-                'n_estimators': n_estimators
-            }
-        )
+    total_combinations = len(valid_ma_pairs) * len(ml_weights) * len(max_depths) * \
+                        len(min_samples_splits) * len(n_estimators_list)
+    print(f"\nTotal parameter combinations to test: {total_combinations}")
+    current_combination = 0
+    
+    # Iterate through all combinations
+    for short_window, long_window in valid_ma_pairs:
+        for ml_weight in ml_weights:
+            for max_depth in max_depths:
+                for min_samples_split in min_samples_splits:
+                    for n_estimators in n_estimators_list:
+                        current_combination += 1
+                        print(f"\nTesting combination {current_combination}/{total_combinations}")
+                        print(f"Parameters: Short={short_window}, Long={long_window}, "
+                              f"ML Weight={ml_weight}, Max Depth={max_depth}, "
+                              f"Min Samples Split={min_samples_split}, "
+                              f"N Estimators={n_estimators}")
+                        
+                        # Initialize and train agent with ML hyperparameters
+                        agent = TradingAgent(
+                            short_window=short_window,
+                            long_window=long_window,
+                            ml_weight=ml_weight,
+                            ml_params={
+                                'max_depth': max_depth,
+                                'min_samples_split': min_samples_split,
+                                'n_estimators': n_estimators
+                            }
+                        )
         
         try:
             # Train and evaluate
             train_metrics = agent.train(df)
             performance = agent.backtest(df)
             
-            results.append({
+            # Create detailed results dictionary
+            result_dict = {
                 'short_window': short_window,
                 'long_window': long_window,
                 'ml_weight': ml_weight,
+                'max_depth': str(max_depth),  # Convert None to string for CSV
+                'min_samples_split': min_samples_split,
+                'n_estimators': n_estimators,
                 'sharpe_ratio': performance['sharpe_ratio'],
                 'total_return': performance['total_return'],
                 'max_drawdown': performance['max_drawdown'],
                 'train_accuracy': train_metrics['train_accuracy'],
                 'test_accuracy': train_metrics['test_accuracy']
-            })
+            }
+            results.append(result_dict)
+            
+            # Save intermediate results every 10 combinations
+            if current_combination % 10 == 0:
+                pd.DataFrame(results).to_csv('optimization_results_interim.csv', index=False)
             
             # Update best parameters if better Sharpe ratio found
             if performance['sharpe_ratio'] > best_sharpe:
@@ -75,21 +101,37 @@ def grid_search_parameters(
                     'short_window': short_window,
                     'long_window': long_window,
                     'ml_weight': ml_weight,
+                    'max_depth': max_depth,
+                    'min_samples_split': min_samples_split,
+                    'n_estimators': n_estimators,
                     'performance': performance,
                     'train_metrics': train_metrics
                 }
+                print("\nNew best parameters found!")
                 
             print(f"Sharpe: {performance['sharpe_ratio']:.3f}, "
                   f"Return: {performance['total_return']:.2%}, "
-                  f"Drawdown: {performance['max_drawdown']:.2%}")
+                  f"Drawdown: {performance['max_drawdown']:.2%}, "
+                  f"Train Acc: {train_metrics['train_accuracy']:.2%}, "
+                  f"Test Acc: {train_metrics['test_accuracy']:.2%}")
             
         except Exception as e:
-            print(f"Error with parameters {short_window}/{long_window}/{ml_weight}: {str(e)}")
+            print(f"Error with parameters: {str(e)}")
             continue
     
-    # Save results to CSV
+    # Save final results to CSV with proper formatting
     results_df = pd.DataFrame(results)
+    
+    # Sort results by Sharpe ratio for easier analysis
+    results_df = results_df.sort_values('sharpe_ratio', ascending=False)
+    
+    # Format percentage columns
+    for col in ['total_return', 'max_drawdown', 'train_accuracy', 'test_accuracy']:
+        results_df[col] = results_df[col].map('{:.2%}'.format)
+    
+    # Save both full results and top 10
     results_df.to_csv('optimization_results.csv', index=False)
+    results_df.head(10).to_csv('optimization_results_top10.csv', index=False)
     
     return best_params
 
