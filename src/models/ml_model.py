@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import ta
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
@@ -58,8 +59,21 @@ class MLModel:
         df['Volume_MA'] = df['Volume'].rolling(window=20).mean()
         df['Volume_Ratio'] = df['Volume'] / df['Volume_MA']
         
-        # Price momentum
+        # Price momentum and trend indicators
         df['RSI'] = self._calculate_rsi(df['Close'])
+        df['MACD'] = ta.trend.macd_diff(df['Close'])
+        df['ADX'] = ta.trend.adx(df['High'], df['Low'], df['Close'])
+        
+        # Volatility indicators
+        bb = ta.volatility.BollingerBands(df['Close'])
+        df['BB_Upper'] = bb.bollinger_hband()
+        df['BB_Lower'] = bb.bollinger_lband()
+        df['BB_Width'] = (df['BB_Upper'] - df['BB_Lower']) / df['Close']
+        df['BB_Position'] = (df['Close'] - df['BB_Lower']) / (df['BB_Upper'] - df['BB_Lower'])
+        
+        # Volume indicators
+        df['OBV'] = ta.volume.on_balance_volume(df['Close'], df['Volume'])
+        df['Force_Index'] = ta.volume.force_index(df['Close'], df['Volume'])
         
         # Moving average features
         for window in [5, 10, 20, 50]:
@@ -89,7 +103,10 @@ class MLModel:
         """
         feature_cols = [
             'Returns', 'Volatility', 'Volume_Ratio',
-            'RSI', 'MA_Ratio_5', 'MA_Ratio_10',
+            'RSI', 'MACD', 'ADX',
+            'BB_Width', 'BB_Position',
+            'OBV', 'Force_Index',
+            'MA_Ratio_5', 'MA_Ratio_10',
             'MA_Ratio_20', 'MA_Ratio_50'
         ]
         
