@@ -54,7 +54,12 @@ class MovingAverageStrategy:
         
         # Calculate Sharpe ratio (assuming risk-free rate = 0)
         annual_factor = np.sqrt(252)
-        sharpe = annual_factor * (np.mean(returns_array) / np.std(returns_array))
+        mean_return = np.mean(returns_array)
+        std_return = np.std(returns_array)
+        if std_return == 0:
+            sharpe = 0.0
+        else:
+            sharpe = annual_factor * (mean_return / std_return)
         
         # Calculate total return
         cum_prod = np.prod(1.0 + returns_array)
@@ -66,4 +71,5 @@ class MovingAverageStrategy:
         drawdowns = cum_returns / rolling_max - 1.0
         max_drawdown = float(np.min(drawdowns))
         
-        return float(sharpe), total_return, max_drawdown
+        # Ensure all metrics are float values
+        return float(sharpe), float(total_return), float(max_drawdown)
