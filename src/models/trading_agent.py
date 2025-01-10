@@ -98,25 +98,32 @@ class TradingAgent:
             (df['MA_Ratio_50'] - 1).abs()  # How far price is from 50-day MA
         ).rolling(window=10).mean()  # Smooth the trend strength
         
-        # Multi-timeframe volatility-based position sizing with gentler scaling
-        # Short-term volatility (10-day)
+        # Calculate trend strength and direction
+        trend_strength = df['MA_Ratio_50'].rolling(window=10).mean()
+        trend_direction = np.sign(trend_strength - 1)
+        
+        # Trend filter (only take positions in direction of trend)
+        trend_filter = (trend_direction * df['Final_Signal'] >= 0).astype(float)
+        
+        # Volatility-based position sizing
         vol_st = df['Returns'].rolling(window=10).std()
-        vol_st_pct = vol_st.rank(pct=True)
-        
-        # Long-term volatility (30-day)
         vol_lt = df['Returns'].rolling(window=30).std()
-        vol_lt_pct = vol_lt.rank(pct=True)
         
-        # Volatility acceleration (rate of change) with gentler decay
-        vol_accel = (vol_st / vol_lt.shift(1) - 1).fillna(0)
-        vol_accel_adj = np.exp(-2 * vol_accel)  # Reduced decay factor
+        # Base position size from volatility (higher vol = smaller position)
+        vol_position = (1 / (1 + 2 * vol_st)).clip(0.2, 1)
         
-        # Combined volatility adjustment with gentler scaling
+        # Dynamic stop-loss levels based on volatility
+        stop_distance = (2 * vol_st).clip(0.02, 0.05)  # 2-5% stop loss
+        trailing_stop = df['Close'].expanding().max() * (1 - stop_distance)
+        stop_hit = (df['Close'] < trailing_stop).astype(float)
+        
+        # Combine all factors for final position sizing
         vol_adjustment = (
-            (1 - 0.6 * vol_st_pct)  # Reduced impact of short-term vol
-            * (1 - 0.15 * vol_lt_pct)  # Reduced impact of long-term vol
-            * vol_accel_adj  # Gentler acceleration factor
-        ).clip(0.2, 1)  # Higher minimum position (20%)
+            vol_position *  # Base position from volatility
+            trend_filter *  # Only take positions in trend direction
+            (1 - stop_hit) *  # Exit when stop loss hit
+            (0.5 + 0.5 * abs(trend_strength - 1).clip(0, 1))  # Scale with trend strength
+        ).clip(0.2, 1)  # Minimum 20% position
         
         # Combine signal strength, trend strength, and volatility adjustment
         df['Position_Size'] = (
