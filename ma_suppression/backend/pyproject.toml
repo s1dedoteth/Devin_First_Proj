@@ -11,6 +11,10 @@ fastapi = {extras = ["standard"], version = "^0.115.6"}
 psycopg = {extras = ["binary"], version = "^3.2.3"}
 sqlalchemy = "^2.0.37"
 psycopg2-binary = "^2.9.10"
+yfinance = "^0.2.51"
+pandas = "^2.2.3"
+numpy = "^2.2.1"
+apscheduler = "^3.11.0"
 
 
 [build-system]
