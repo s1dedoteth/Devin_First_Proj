@@ -107,7 +107,7 @@ class SuppressionService:
         - D: Average deviation from MA (%)
         - T: Total number of trading days
         """
-        score = (
+        score = float(
             self.w1 * (contacts / total_days) +
             self.w2 * (breakthroughs / total_days) -
             self.w3 * avg_deviation
@@ -192,11 +192,11 @@ class SuppressionService:
                 if result:
                     score = SuppressionScore(
                         stock_id=stock.id,
-                        ma_period=period,
-                        score=result['score'],
-                        contacts=result['contacts'],
-                        breakthroughs=result['breakthroughs'],
-                        avg_deviation=result['avg_deviation']
+                        ma_period=int(period),
+                        score=float(result['score']),
+                        contacts=int(result['contacts']),
+                        breakthroughs=int(result['breakthroughs']),
+                        avg_deviation=float(result['avg_deviation'])
                     )
                     self.db.add(score)
             
