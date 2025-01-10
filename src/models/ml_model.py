@@ -5,7 +5,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.utils.class_weight import compute_class_weight
-from typing import Tuple, List, Dict, Optional, Union
+from typing import Tuple, List, Dict, Optional, Union, Any
 
 class MLModel:
     """Machine Learning Model for Trading Signal Enhancement"""
@@ -26,6 +26,15 @@ class MLModel:
             random_state (int): Random seed for reproducibility
             **kwargs: Additional RandomForest parameters
         """
+        # Define feature columns as class attribute
+        self.feature_cols = [
+            'Returns', 'Volatility', 'Volume_Ratio',
+            'RSI', 'MACD', 'ADX',
+            'BB_Width', 'BB_Position',
+            'OBV', 'Force_Index',
+            'MA_Ratio_5', 'MA_Ratio_10',
+            'MA_Ratio_20', 'MA_Ratio_50'
+        ]
         self.model = RandomForestClassifier(
             n_estimators=n_estimators,
             max_depth=max_depth,
@@ -101,14 +110,7 @@ class MLModel:
         Returns:
             Tuple[np.ndarray, np.ndarray]: X (features) and y (target) arrays
         """
-        feature_cols = [
-            'Returns', 'Volatility', 'Volume_Ratio',
-            'RSI', 'MACD', 'ADX',
-            'BB_Width', 'BB_Position',
-            'OBV', 'Force_Index',
-            'MA_Ratio_5', 'MA_Ratio_10',
-            'MA_Ratio_20', 'MA_Ratio_50'
-        ]
+        feature_cols = self.feature_cols
         
         # Drop rows with NaN values
         df = df.dropna()
@@ -121,7 +123,7 @@ class MLModel:
         
         return X, y
     
-    def train(self, X: np.ndarray, y: np.ndarray) -> Dict[str, float]:
+    def train(self, X: np.ndarray, y: np.ndarray) -> Dict[str, Any]:
         """
         Train the ML model with time-series aware cross-validation
         
@@ -158,10 +160,22 @@ class MLModel:
         val_score = self.model.score(X_val, y_val)
         test_score = self.model.score(X_test, y_test)
         
+        # Calculate feature importance
+        importances = self.model.feature_importances_
+        feature_importance = pd.DataFrame({
+            'feature': self.feature_cols,
+            'importance': importances
+        }).sort_values('importance', ascending=False)
+        
+        print("\nFeature Importance:")
+        for _, row in feature_importance.iterrows():
+            print(f"{row['feature']}: {row['importance']:.4f}")
+        
         return {
             'train_accuracy': train_score,
             'val_accuracy': val_score,
-            'test_accuracy': test_score
+            'test_accuracy': test_score,
+            'feature_importance': feature_importance.to_dict('records')
         }
     
     def predict(self, X: np.ndarray) -> np.ndarray:
