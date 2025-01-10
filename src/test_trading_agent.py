@@ -1,13 +1,13 @@
 import pandas as pd
 import numpy as np
-from models.trading_agent import TradingAgent
+from src.models.trading_agent import TradingAgent
 import matplotlib.pyplot as plt
 import seaborn as sns
 
 def test_trading_agent():
     """Test the trading agent implementation"""
-    # Load sample data
-    df = pd.read_csv('../data/AAPL_data.csv', index_col='Date', parse_dates=True)
+    # Load sample data (using MMM as test case)
+    df = pd.read_csv('data/MMM_data.csv', index_col='Date', parse_dates=True)
     
     # Initialize trading agent
     agent = TradingAgent(short_window=20, long_window=50, ml_weight=0.6)

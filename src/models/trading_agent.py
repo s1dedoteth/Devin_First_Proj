@@ -1,8 +1,8 @@
 import pandas as pd
 import numpy as np
 from typing import Dict, List
-from ..strategies.moving_average import MovingAverageStrategy
-from .ml_model import MLModel
+from src.strategies.moving_average import MovingAverageStrategy
+from src.models.ml_model import MLModel
 
 class TradingAgent:
     """Trading Agent combining MA signals with ML predictions"""
