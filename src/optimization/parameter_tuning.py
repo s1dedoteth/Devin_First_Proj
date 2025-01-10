@@ -60,19 +60,19 @@ def grid_search_parameters(
                               f"Min Samples Split={min_samples_split}, "
                               f"N Estimators={n_estimators}")
                         
-                        # Initialize and train agent with ML hyperparameters
-                        agent = TradingAgent(
-                            short_window=short_window,
-                            long_window=long_window,
-                            ml_weight=ml_weight,
-                            ml_params={
-                                'max_depth': max_depth,
-                                'min_samples_split': min_samples_split,
-                                'n_estimators': n_estimators
-                            }
-                        )
-                        
                         try:
+                            # Initialize and train agent with ML hyperparameters
+                            agent = TradingAgent(
+                                short_window=short_window,
+                                long_window=long_window,
+                                ml_weight=ml_weight,
+                                ml_params={
+                                    'max_depth': max_depth,
+                                    'min_samples_split': min_samples_split,
+                                    'n_estimators': n_estimators
+                                }
+                            )
+                            
                             # Train and evaluate
                             train_metrics = agent.train(df)
                             performance = agent.backtest(df)
@@ -117,39 +117,11 @@ def grid_search_parameters(
                                   f"Drawdown: {performance['max_drawdown']:.2%}, "
                                   f"Train Acc: {train_metrics['train_accuracy']:.2%}, "
                                   f"Test Acc: {train_metrics['test_accuracy']:.2%}")
-                            
                         except Exception as e:
                             print(f"Error with parameters: {str(e)}")
                             continue
             
-            # Save intermediate results every 10 combinations
-            if current_combination % 10 == 0:
-                pd.DataFrame(results).to_csv('optimization_results_interim.csv', index=False)
-            
-            # Update best parameters if better Sharpe ratio found
-            if performance['sharpe_ratio'] > best_sharpe:
-                best_sharpe = performance['sharpe_ratio']
-                best_params = {
-                    'short_window': short_window,
-                    'long_window': long_window,
-                    'ml_weight': ml_weight,
-                    'max_depth': max_depth,
-                    'min_samples_split': min_samples_split,
-                    'n_estimators': n_estimators,
-                    'performance': performance,
-                    'train_metrics': train_metrics
-                }
-                print("\nNew best parameters found!")
-                
-            print(f"Sharpe: {performance['sharpe_ratio']:.3f}, "
-                  f"Return: {performance['total_return']:.2%}, "
-                  f"Drawdown: {performance['max_drawdown']:.2%}, "
-                  f"Train Acc: {train_metrics['train_accuracy']:.2%}, "
-                  f"Test Acc: {train_metrics['test_accuracy']:.2%}")
-            
-        except Exception as e:
-            print(f"Error with parameters: {str(e)}")
-            continue
+
     
     # Save final results to CSV with proper formatting
     results_df = pd.DataFrame(results)
