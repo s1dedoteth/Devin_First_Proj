@@ -67,7 +67,8 @@ class TradingAgent:
         
         # Combine signals
         df['ML_Signal'] = 0
-        df.loc[len(df) - len(ml_signals):, 'ML_Signal'] = ml_signals
+        signal_indices = df.index[-len(ml_signals):]
+        df.loc[signal_indices, 'ML_Signal'] = ml_signals
         
         # Weighted combination of signals
         df['Final_Signal'] = (
