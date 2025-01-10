@@ -50,7 +50,13 @@ class TradingAgent:
         print(f"Validation Accuracy: {metrics['val_accuracy']:.2%}")
         print(f"Test Accuracy: {metrics['test_accuracy']:.2%}")
         
-        return {k: float(v) for k, v in metrics.items()}
+        # Convert numeric metrics to float, preserve feature importance dict
+        return {
+            'train_accuracy': float(metrics['train_accuracy']),
+            'val_accuracy': float(metrics['val_accuracy']),
+            'test_accuracy': float(metrics['test_accuracy']),
+            'feature_importance': metrics['feature_importance']
+        }
     
     def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         """
