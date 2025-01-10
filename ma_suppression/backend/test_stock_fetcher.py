@@ -1,19 +1,9 @@
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from app.services.stock_service import StockService
+from ma_suppression.backend.app.services.stock_service import StockService
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine
-from app.models import Base
 
 # Create test database engine
-engine = create_engine("sqlite:///./test.db", connect_args={"check_same_thread": False})
-
-# Create tables
-Base.metadata.create_all(bind=engine)
-
-# Create session
+engine = create_engine("sqlite:///test.db")
 session = Session(engine)
 
 # Initialize service
