@@ -107,8 +107,10 @@ class TradingAgent:
         # Generate signals
         df = self.generate_signals(df)
         
-        # Calculate returns
-        df['Strategy_Returns'] = df['Final_Signal'].shift(1) * df['Returns']
+        # Calculate returns with transaction costs
+        df['Signal_Change'] = df['Final_Signal'].diff().abs()  # Detect trades
+        df['Transaction_Costs'] = df['Signal_Change'] * 0.0015  # 15 bps per trade
+        df['Strategy_Returns'] = df['Final_Signal'].shift(1) * df['Returns'] - df['Transaction_Costs']
         
         # Calculate performance metrics
         sharpe, total_return, max_drawdown = self.ma_strategy.calculate_performance(df)
