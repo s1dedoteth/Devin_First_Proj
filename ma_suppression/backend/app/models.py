@@ -8,10 +8,10 @@ class Stock(Base):
     __tablename__ = "stocks"
     
     id = Column(Integer, primary_key=True, index=True)
-    symbol = Column(String, unique=True, index=True)
-    name = Column(String)
-    market_cap = Column(Float)
-    index_type = Column(String)  # "RUSSELL2000" or "NASDAQ"
+    symbol = Column(String(10), unique=True, index=True)
+    name = Column(String(100), index=True)
+    market_cap = Column(Float, index=True)  # Indexed for filtering by market cap
+    index_type = Column(String(20), index=True)  # "RUSSELL2000" or "NASDAQ", indexed for filtering
     prices = relationship("StockPrice", back_populates="stock")
     suppression_scores = relationship("SuppressionScore", back_populates="stock")
 

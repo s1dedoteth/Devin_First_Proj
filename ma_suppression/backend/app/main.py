@@ -4,9 +4,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from .models import Base, Stock, StockPrice, SuppressionScore
 
-# Using SQLite for development/proof of concept
-SQLALCHEMY_DATABASE_URL = "sqlite:///./ma_suppression.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+# PostgreSQL database configuration
+SQLALCHEMY_DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/ma_suppression"
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Create all tables
