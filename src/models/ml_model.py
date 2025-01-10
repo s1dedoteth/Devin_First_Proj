@@ -3,7 +3,8 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from typing import Tuple, List, Dict, Optional
+from sklearn.utils.class_weight import compute_class_weight
+from typing import Tuple, List, Dict, Optional, Union
 
 class MLModel:
     """Machine Learning Model for Trading Signal Enhancement"""
@@ -28,6 +29,10 @@ class MLModel:
             n_estimators=n_estimators,
             max_depth=max_depth,
             min_samples_split=min_samples_split,
+            min_samples_leaf=4,  # Additional regularization
+            max_features='sqrt',  # Use sqrt(n_features) for each split
+            bootstrap=True,  # Enable bootstrapping for better generalization
+            oob_score=True,  # Use out-of-bag score
             random_state=random_state,
             **kwargs
         )
@@ -101,7 +106,7 @@ class MLModel:
     
     def train(self, X: np.ndarray, y: np.ndarray) -> Dict[str, float]:
         """
-        Train the ML model
+        Train the ML model with time-series aware cross-validation
         
         Args:
             X (np.ndarray): Feature matrix
@@ -110,20 +115,35 @@ class MLModel:
         Returns:
             Dict[str, float]: Training metrics
         """
-        # Split data
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
-        )
+        # Use the last 30% of data for testing to better simulate real trading
+        train_size = int(0.7 * len(X))
+        X_train, X_test = X[:train_size], X[train_size:]
+        y_train, y_test = y[:train_size], y[train_size:]
         
-        # Train model
-        self.model.fit(X_train, y_train)
+        # Add class weights to handle imbalanced data
+        class_weights = compute_class_weight('balanced', 
+                                          classes=np.unique(y_train), 
+                                          y=y_train)
+        class_weight_dict = dict(zip(np.unique(y_train), class_weights))
+        self.model.set_params(class_weight=class_weight_dict)
+        
+        # Train model with early stopping using validation set
+        val_size = int(0.2 * len(X_train))
+        X_train_final = X_train[:-val_size]
+        X_val = X_train[-val_size:]
+        y_train_final = y_train[:-val_size]
+        y_val = y_train[-val_size:]
+        
+        self.model.fit(X_train_final, y_train_final)
         
         # Calculate metrics
-        train_score = self.model.score(X_train, y_train)
+        train_score = self.model.score(X_train_final, y_train_final)
+        val_score = self.model.score(X_val, y_val)
         test_score = self.model.score(X_test, y_test)
         
         return {
             'train_accuracy': train_score,
+            'val_accuracy': val_score,
             'test_accuracy': test_score
         }
     

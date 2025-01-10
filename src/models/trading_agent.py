@@ -42,10 +42,15 @@ class TradingAgent:
         df = self.ml_model.create_features(df)
         X, y = self.ml_model.prepare_data(df)
         
-        # Train ML model
+        # Train ML model with validation
         metrics = self.ml_model.train(X, y)
         
-        return metrics
+        print("\nTraining Metrics:")
+        print(f"Train Accuracy: {metrics['train_accuracy']:.2%}")
+        print(f"Validation Accuracy: {metrics['val_accuracy']:.2%}")
+        print(f"Test Accuracy: {metrics['test_accuracy']:.2%}")
+        
+        return {k: float(v) for k, v in metrics.items()}
     
     def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         """
