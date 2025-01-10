@@ -98,11 +98,12 @@ class TradingAgent:
             (df['MA_Ratio_50'] - 1).abs()  # How far price is from 50-day MA
         ).rolling(window=10).mean()  # Smooth the trend strength
         
-        # Dynamic volatility adjustment based on market regime
+        # More aggressive volatility-based position sizing
         vol_percentile = df['Volatility'].rank(pct=True)
         vol_adjustment = (
-            (1 - 0.7 * vol_percentile)  # Linear scaling from 100% to 30% based on vol rank
-        ).clip(0.3, 1)  # Minimum 30% position to maintain exposure
+            (1 - 0.9 * vol_percentile)  # More aggressive scaling from 100% to 10%
+            * np.exp(-2 * df['Volatility'])  # Exponential decay for extreme volatility
+        ).clip(0.1, 1)  # Lower minimum position size
         
         # Combine signal strength, trend strength, and volatility adjustment
         df['Position_Size'] = (
