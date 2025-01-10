@@ -68,14 +68,14 @@ class TradingAgent:
         Returns:
             pd.DataFrame: DataFrame with combined signals
         """
+        # Create features first
+        df = self.ml_model.create_features(df)
+        
         # Get MA signals
         df = self.ma_strategy.calculate_signals(df)
         
-        # Create features for ML
-        df_features = self.ml_model.create_features(df)
-        X, _ = self.ml_model.prepare_data(df_features, target_col='Signal')
-        
-        # Get ML predictions
+        # Prepare data and get ML predictions
+        X, _ = self.ml_model.prepare_data(df, target_col='Signal')
         ml_signals = self.ml_model.predict(X)
         
         # Combine signals
