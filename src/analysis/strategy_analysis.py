@@ -57,12 +57,17 @@ def plot_performance_analysis(df: pd.DataFrame, save_path: str = 'analysis_plots
     """Create visualization of strategy analysis"""
     plt.figure(figsize=(15, 12))
     
-    # Plot 1: Cumulative Returns by Regime
+    # Plot 1: Cumulative Returns by Volatility Regime
     plt.subplot(2, 2, 1)
-    for regime in df['Regime'].unique():
+    # Calculate volatility and define regimes
+    df['Volatility'] = df['Returns'].rolling(window=20).std()
+    df['Regime'] = pd.qcut(df['Volatility'].fillna(0), q=3, labels=['Low Vol', 'Med Vol', 'High Vol'])
+    
+    for regime in ['Low Vol', 'Med Vol', 'High Vol']:
         mask = df['Regime'] == regime
-        cum_returns = (1 + df.loc[mask, 'Strategy_Returns']).cumprod()
-        plt.plot(cum_returns.index, cum_returns, label=regime)
+        if mask.any():  # Only plot if regime exists
+            cum_returns = (1 + df.loc[mask, 'Strategy_Returns']).cumprod()
+            plt.plot(cum_returns.index, cum_returns, label=regime)
     plt.title('Cumulative Returns by Market Regime')
     plt.legend()
     
