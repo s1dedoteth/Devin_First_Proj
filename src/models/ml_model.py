@@ -3,22 +3,33 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from typing import Tuple, List, Dict
+from typing import Tuple, List, Dict, Optional
 
 class MLModel:
     """Machine Learning Model for Trading Signal Enhancement"""
     
-    def __init__(self, n_estimators: int = 100, random_state: int = 42):
+    def __init__(self, 
+                 n_estimators: int = 100, 
+                 max_depth: Optional[int] = None,
+                 min_samples_split: int = 2,
+                 random_state: int = 42,
+                 **kwargs):
         """
         Initialize ML model
         
         Args:
             n_estimators (int): Number of trees in random forest
+            max_depth (int): Maximum depth of trees
+            min_samples_split (int): Minimum samples required to split
             random_state (int): Random seed for reproducibility
+            **kwargs: Additional RandomForest parameters
         """
         self.model = RandomForestClassifier(
             n_estimators=n_estimators,
-            random_state=random_state
+            max_depth=max_depth,
+            min_samples_split=min_samples_split,
+            random_state=random_state,
+            **kwargs
         )
         self.scaler = StandardScaler()
         

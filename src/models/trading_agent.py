@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from typing import Dict, List
+from typing import Dict, List, Optional
 from src.strategies.moving_average import MovingAverageStrategy
 from src.models.ml_model import MLModel
 
@@ -10,7 +10,8 @@ class TradingAgent:
     def __init__(self, 
                  short_window: int = 20,
                  long_window: int = 50,
-                 ml_weight: float = 0.5):
+                 ml_weight: float = 0.5,
+                 ml_params: Optional[Dict] = None):
         """
         Initialize Trading Agent
         
@@ -18,9 +19,10 @@ class TradingAgent:
             short_window (int): Short-term MA window
             long_window (int): Long-term MA window
             ml_weight (float): Weight given to ML predictions (0-1)
+            ml_params (Dict): ML model hyperparameters
         """
         self.ma_strategy = MovingAverageStrategy(short_window, long_window)
-        self.ml_model = MLModel()
+        self.ml_model = MLModel(**(ml_params or {}))
         self.ml_weight = ml_weight
         
     def train(self, df: pd.DataFrame) -> Dict[str, float]:

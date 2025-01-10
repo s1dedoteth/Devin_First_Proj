@@ -1,16 +1,19 @@
 import pandas as pd
 import numpy as np
 from itertools import product
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional, Union
 import sys
 sys.path.append('..')
 from models.trading_agent import TradingAgent
 
 def grid_search_parameters(
     df: pd.DataFrame,
-    short_windows: List[int] = [5, 10, 20, 30],
-    long_windows: List[int] = [20, 50, 100, 200],
-    ml_weights: List[float] = [0.3, 0.5, 0.7, 0.9]
+    short_windows: List[int] = [5, 10, 15, 20, 25, 30],
+    long_windows: List[int] = [20, 35, 50, 75, 100, 150, 200],
+    ml_weights: List[float] = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+    max_depths: List[Optional[int]] = [3, 5, 8, 10, None],
+    min_samples_splits: List[int] = [2, 5, 10],
+    n_estimators_list: List[int] = [50, 100, 200]
 ) -> Dict:
     """
     Perform grid search over strategy parameters
@@ -30,19 +33,25 @@ def grid_search_parameters(
     
     # Generate all parameter combinations
     param_combinations = [
-        (short, long, weight)
-        for short, long, weight in product(short_windows, long_windows, ml_weights)
+        (short, long, weight, max_depth, min_samples_split, n_estimators)
+        for short, long, weight, max_depth, min_samples_split, n_estimators 
+        in product(short_windows, long_windows, ml_weights, max_depths, min_samples_splits, n_estimators_list)
         if short < long  # Ensure short window is less than long window
     ]
     
-    for short_window, long_window, ml_weight in param_combinations:
+    for short_window, long_window, ml_weight, max_depth, min_samples_split, n_estimators in param_combinations:
         print(f"\nTesting parameters: Short={short_window}, Long={long_window}, ML Weight={ml_weight}")
         
-        # Initialize and train agent
+        # Initialize and train agent with ML hyperparameters
         agent = TradingAgent(
             short_window=short_window,
             long_window=long_window,
-            ml_weight=ml_weight
+            ml_weight=ml_weight,
+            ml_params={
+                'max_depth': max_depth,
+                'min_samples_split': min_samples_split,
+                'n_estimators': n_estimators
+            }
         )
         
         try:
