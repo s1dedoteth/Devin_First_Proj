@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from .models import Base, Stock, StockPrice, SuppressionScore
 from .services.stock_service import StockService
@@ -47,7 +47,7 @@ def get_db():
 async def healthz(db: Session = Depends(get_db)):
     try:
         # Test database connection
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         return {"status": "ok", "database": "connected"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database connection failed: {str(e)}")
