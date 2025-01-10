@@ -98,7 +98,7 @@ class TradingAgent:
             (df['MA_Ratio_50'] - 1).abs()  # How far price is from 50-day MA
         ).rolling(window=10).mean()  # Smooth the trend strength
         
-        # Multi-timeframe volatility-based position sizing
+        # Multi-timeframe volatility-based position sizing with gentler scaling
         # Short-term volatility (10-day)
         vol_st = df['Returns'].rolling(window=10).std()
         vol_st_pct = vol_st.rank(pct=True)
@@ -107,16 +107,16 @@ class TradingAgent:
         vol_lt = df['Returns'].rolling(window=30).std()
         vol_lt_pct = vol_lt.rank(pct=True)
         
-        # Volatility acceleration (rate of change)
+        # Volatility acceleration (rate of change) with gentler decay
         vol_accel = (vol_st / vol_lt.shift(1) - 1).fillna(0)
-        vol_accel_adj = np.exp(-3 * vol_accel)  # Exponential decay for increasing volatility
+        vol_accel_adj = np.exp(-2 * vol_accel)  # Reduced decay factor
         
-        # Combined volatility adjustment
+        # Combined volatility adjustment with gentler scaling
         vol_adjustment = (
-            (1 - 0.8 * vol_st_pct)  # Base scaling from short-term vol
-            * (1 - 0.2 * vol_lt_pct)  # Additional scaling from long-term vol
-            * vol_accel_adj  # Acceleration factor
-        ).clip(0.1, 1)  # Minimum 10% position
+            (1 - 0.6 * vol_st_pct)  # Reduced impact of short-term vol
+            * (1 - 0.15 * vol_lt_pct)  # Reduced impact of long-term vol
+            * vol_accel_adj  # Gentler acceleration factor
+        ).clip(0.2, 1)  # Higher minimum position (20%)
         
         # Combine signal strength, trend strength, and volatility adjustment
         df['Position_Size'] = (
