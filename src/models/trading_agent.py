@@ -84,13 +84,21 @@ class TradingAgent:
         df.loc[signal_indices, 'ML_Signal'] = ml_signals
         
         # Weighted combination of signals
-        df['Final_Signal'] = (
+        raw_signal = (
             (1 - self.ml_weight) * df['Signal'] +
             self.ml_weight * df['ML_Signal']
         )
         
-        # Convert to discrete signals (-1, 0, 1)
-        df['Final_Signal'] = np.sign(df['Final_Signal'])
+        # Calculate position size based on signal strength and volatility
+        df['Signal_Strength'] = raw_signal.abs()  # How strong is the signal
+        df['Volatility'] = df['Returns'].rolling(window=20).std()
+        df['Position_Size'] = (
+            df['Signal_Strength'] * 
+            (1 / (1 + 2 * df['Volatility']))  # Reduce position size in high volatility
+        ).clip(0, 1)  # Limit position size between 0 and 100%
+        
+        # Final signal combines direction and position size
+        df['Final_Signal'] = np.sign(raw_signal) * df['Position_Size']
         
         return df
     
