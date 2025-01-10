@@ -3,6 +3,7 @@ import pandas as pd
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import List, Dict
+import numpy as np
 from ..models import Stock, StockPrice
 
 class StockService:
@@ -101,29 +102,36 @@ class StockService:
     
     def store_price_data(self, stock: Stock, price_data: pd.DataFrame):
         """Store daily price data in database."""
-        # Reset index to make date a column
-        price_data = price_data.reset_index()
-        
-        for _, row in price_data.iterrows():
-            try:
-                # Convert numpy types to native Python types
-                price = StockPrice(
-                    stock_id=stock.id,
-                    date=row['Date'].date(),  # Pandas Timestamp to date
-                    open=float(row['Open'].item()),  # numpy.float64 to float
-                    high=float(row['High'].item()),
-                    low=float(row['Low'].item()),
-                    close=float(row['Close'].item())
-                )
-                self.db.add(price)
-            except Exception as e:
-                print(f"Error storing price data: {e}")
-                continue
-        
         try:
+            # Clear existing price data for this stock
+            self.db.query(StockPrice).filter(StockPrice.stock_id == stock.id).delete()
             self.db.commit()
+            
+            # Convert DataFrame to records for bulk insertion
+            records = []
+            
+            # Convert DataFrame to dictionary of records
+            price_dict = price_data.round(4).reset_index().to_dict('records')
+            
+            for record in price_dict:
+                records.append(
+                    StockPrice(
+                        stock_id=stock.id,
+                        date=record['Date'].date(),
+                        open=float(record['Open']),
+                        high=float(record['High']),
+                        low=float(record['Low']),
+                        close=float(record['Close'])
+                    )
+                )
+            
+            # Bulk insert all records
+            self.db.bulk_save_objects(records)
+            self.db.commit()
+            print(f"Successfully stored {len(records)} price records for {stock.symbol}")
+            
         except Exception as e:
-            print(f"Error committing price data: {e}")
+            print(f"Error storing price data for {stock.symbol}: {e}")
             self.db.rollback()
     
     def update_all_data(self):
