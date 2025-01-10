@@ -31,9 +31,9 @@ async def startup_event():
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://moving-average-app-tunnel-src1w1iy.devinapps.com",
+        "http://localhost:4173",
         "http://localhost:5173",
-        "https://moving-average-analysis-app-k51ft6e1.devinapps.com"
+        "http://localhost:3000"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -81,6 +81,7 @@ async def update_stocks(db: Session = Depends(get_db)):
 
 from typing import Optional
 from sqlalchemy import desc, func
+import time
 
 @app.get("/api/stocks/{symbol}/historical")
 async def get_historical_data(
@@ -143,8 +144,10 @@ async def get_historical_data(
 async def get_stocks(
     db: Session = Depends(get_db),
     search: Optional[str] = None,
-    sort: Optional[str] = None,
-    order: Optional[str] = "desc"
+    sort: Optional[str] = "score",  # Default sort by score
+    order: Optional[str] = "desc",
+    page: int = 1,
+    limit: int = 50  # Default 50 stocks per page
 ):
     """
     Get list of stocks with their best moving averages and suppression scores.
@@ -224,8 +227,23 @@ async def get_stocks(
             # Default sort by market cap
             query = query.order_by(desc(Stock.market_cap))
         
-        # Execute query and format results
+        # Get total count for pagination
+        count_start = time.time()
+        total_count = query.count()
+        print(f"Count query took {time.time() - count_start:.2f}s for {total_count} stocks")
+        
+        # Apply pagination
+        page = max(page, 1)
+        limit = max(limit, 1)
+        offset = (page - 1) * limit
+        
+        # Execute paginated query with timing
+        query_start = time.time()
+        query = query.offset(offset).limit(limit)
         stocks = query.all()
+        print(f"Page query took {time.time() - query_start:.2f}s for {len(stocks)} stocks")
+        
+        # Format results
         result = []
         
         for stock, ma_period, score, latest_price, latest_date in stocks:
@@ -240,7 +258,13 @@ async def get_stocks(
                 "latest_date": latest_date
             })
         
-        return result
+        return {
+            "stocks": result,
+            "total": total_count,
+            "page": page,
+            "limit": limit,
+            "total_pages": (total_count + limit - 1) // limit
+        }
         
     except Exception as e:
         raise HTTPException(
