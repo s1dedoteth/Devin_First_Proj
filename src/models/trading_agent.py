@@ -92,9 +92,20 @@ class TradingAgent:
         # Calculate position size based on signal strength and volatility
         df['Signal_Strength'] = raw_signal.abs()  # How strong is the signal
         df['Volatility'] = df['Returns'].rolling(window=20).std()
+        
+        # Calculate trend strength using MA_Ratio_50
+        df['Trend_Strength'] = (
+            (df['MA_Ratio_50'] - 1).abs()  # How far price is from 50-day MA
+        ).rolling(window=10).mean()  # Smooth the trend strength
+        
+        # Less aggressive volatility adjustment with lower minimum position
+        vol_adjustment = (1 / (1 + df['Volatility'])).clip(0.1, 1)  # Minimum 10% position
+        
+        # Combine signal strength, trend strength, and volatility adjustment
         df['Position_Size'] = (
             df['Signal_Strength'] * 
-            (1 / (1 + 2 * df['Volatility']))  # Reduce position size in high volatility
+            vol_adjustment * 
+            (1 + df['Trend_Strength'])  # Increase position in strong trends
         ).clip(0, 1)  # Limit position size between 0 and 100%
         
         # Final signal combines direction and position size
