@@ -108,7 +108,7 @@ class TradingAgent:
         sharpe, total_return, max_drawdown = self.ma_strategy.calculate_performance(df)
         
         return {
-            'sharpe_ratio': sharpe,
-            'total_return': total_return,
-            'max_drawdown': max_drawdown
+            'sharpe_ratio': float(sharpe),
+            'total_return': float(total_return),
+            'max_drawdown': float(max_drawdown)
         }
