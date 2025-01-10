@@ -79,18 +79,24 @@ def grid_search_parameters(
                             
                             # Create detailed results dictionary with explicit float conversion
                             result_dict = {
-                                'short_window': short_window,
-                                'long_window': long_window,
-                                'ml_weight': ml_weight,
+                                'short_window': int(short_window),
+                                'long_window': int(long_window),
+                                'ml_weight': float(ml_weight),
                                 'max_depth': str(max_depth),  # Convert None to string for CSV
-                                'min_samples_split': min_samples_split,
-                                'n_estimators': n_estimators,
-                                'sharpe_ratio': float(performance['sharpe_ratio']),
-                                'total_return': float(performance['total_return']),
-                                'max_drawdown': float(performance['max_drawdown']),
-                                'train_accuracy': float(train_metrics['train_accuracy']),
-                                'test_accuracy': float(train_metrics['test_accuracy'])
+                                'min_samples_split': int(min_samples_split),
+                                'n_estimators': int(n_estimators),
+                                'sharpe_ratio': float(performance.get('sharpe_ratio', 0.0)),
+                                'total_return': float(performance.get('total_return', 0.0)),
+                                'max_drawdown': float(performance.get('max_drawdown', 0.0)),
+                                'train_accuracy': float(train_metrics.get('train_accuracy', 0.0)),
+                                'val_accuracy': float(train_metrics.get('val_accuracy', 0.0)),
+                                'test_accuracy': float(train_metrics.get('test_accuracy', 0.0))
                             }
+                            
+                            # Add feature importance to results
+                            if 'feature_importance' in train_metrics:
+                                for feat, imp in train_metrics['feature_importance'].items():
+                                    result_dict[f'importance_{feat}'] = float(imp)
                             results.append(result_dict)
                             
                             # Save intermediate results every 10 combinations
@@ -98,17 +104,18 @@ def grid_search_parameters(
                                 pd.DataFrame(results).to_csv('optimization_results_interim.csv', index=False)
                             
                             # Update best parameters if better Sharpe ratio found
-                            if performance['sharpe_ratio'] > best_sharpe:
-                                best_sharpe = float(performance['sharpe_ratio'])
+                            current_sharpe = float(performance.get('sharpe_ratio', 0.0))
+                            if current_sharpe > best_sharpe:
+                                best_sharpe = current_sharpe
                                 best_params = {
-                                    'short_window': short_window,
-                                    'long_window': long_window,
-                                    'ml_weight': ml_weight,
+                                    'short_window': int(short_window),
+                                    'long_window': int(long_window),
+                                    'ml_weight': float(ml_weight),
                                     'max_depth': max_depth,
-                                    'min_samples_split': min_samples_split,
-                                    'n_estimators': n_estimators,
-                                    'performance': performance,
-                                    'train_metrics': train_metrics
+                                    'min_samples_split': int(min_samples_split),
+                                    'n_estimators': int(n_estimators),
+                                    'performance': {k: float(v) for k, v in performance.items()},
+                                    'train_metrics': {k: float(v) for k, v in train_metrics.items()}
                                 }
                                 print("\nNew best parameters found!")
                             

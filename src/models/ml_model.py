@@ -161,26 +161,24 @@ class MLModel:
         self.model.fit(X_train_final, y_train_final)
         
         # Calculate metrics
-        train_score = self.model.score(X_train_final, y_train_final)
-        val_score = self.model.score(X_val, y_val)
-        test_score = self.model.score(X_test, y_test)
+        train_score = float(self.model.score(X_train_final, y_train_final))
+        val_score = float(self.model.score(X_val, y_val))
+        test_score = float(self.model.score(X_test, y_test))
         
-        # Calculate feature importance
-        importances = self.model.feature_importances_
-        feature_importance = pd.DataFrame({
-            'feature': self.feature_cols,
-            'importance': importances
-        }).sort_values('importance', ascending=False)
+        # Calculate feature importance as a simple dict
+        importances = [float(imp) for imp in self.model.feature_importances_]
+        feature_importance = dict(zip(self.feature_cols, importances))
         
+        # Print feature importance
         print("\nFeature Importance:")
-        for _, row in feature_importance.iterrows():
-            print(f"{row['feature']}: {row['importance']:.4f}")
+        for feat, imp in sorted(feature_importance.items(), key=lambda x: x[1], reverse=True):
+            print(f"{feat}: {imp:.4f}")
         
         return {
             'train_accuracy': train_score,
             'val_accuracy': val_score,
             'test_accuracy': test_score,
-            'feature_importance': feature_importance.to_dict('records')
+            'feature_importance': feature_importance
         }
     
     def predict(self, X: np.ndarray) -> np.ndarray:
