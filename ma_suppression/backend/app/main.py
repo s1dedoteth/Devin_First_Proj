@@ -26,27 +26,17 @@ app = FastAPI()
 # Initialize scheduler on startup
 @app.on_event("startup")
 async def startup_event():
-    """Initialize scheduler and populate database if empty."""
+    """Initialize scheduler and check database status."""
     db = SessionLocal()
     try:
-        # Check if database is empty
+        # Check database status
         stock_count = db.query(Stock).count()
-        if stock_count == 0:
-            print("\nInitializing database with test data...")
-            # Always use test data in production for now
-            from tests.test_pagination import create_test_data
-            create_test_data(db)
-            print("Test data generation complete.")
-            
-            # Calculate initial suppression scores
-            suppression_service = SuppressionService(db)
-            suppression_service.analyze_all_stocks()
-            print("Suppression analysis complete.")
-        else:
-            print(f"Database already contains {stock_count} stocks")
+        scores_count = db.query(SuppressionScore).count()
+        print(f"\nDatabase status: {stock_count} stocks, {scores_count} scores")
         
         # Set up scheduler for daily updates
         setup_scheduler(db)
+        print("Scheduler initialized")
     except Exception as e:
         print(f"Error during startup: {e}")
         raise  # Re-raise to ensure we see the error
