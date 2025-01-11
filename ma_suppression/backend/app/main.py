@@ -130,6 +130,13 @@ async def init_database():
         
         db = SessionLocal()
         try:
+            # Configure SQLite for minimal memory usage
+            db.execute(text("PRAGMA cache_size = -2000"))  # 2MB cache
+            db.execute(text("PRAGMA temp_store = MEMORY"))
+            db.execute(text("PRAGMA journal_mode = MEMORY"))
+            db.execute(text("PRAGMA synchronous = OFF"))
+            db.execute(text("PRAGMA page_size = 4096"))
+            
             # Check database status with raw SQL for minimal memory usage
             stock_count = db.execute(text("SELECT COUNT(*) FROM stocks")).scalar()
             scores_count = db.execute(text("SELECT COUNT(*) FROM suppression_scores")).scalar()
