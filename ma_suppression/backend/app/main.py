@@ -32,49 +32,52 @@ async def startup_event():
         # Check if database is empty
         stock_count = db.query(Stock).count()
         if stock_count == 0:
-            print("Database is empty. Fetching real stock data...")
-            stock_service = StockService(db)
-            
-            # Fetch real stock data
-            try:
-                print("Fetching stock symbols...")
-                stocks = stock_service.fetch_index_constituents()
-                print(f"Found {len(stocks)} stocks. Fetching details...")
+            # Check if test data is allowed first
+            allow_test_data = os.getenv('ALLOW_TEST_DATA', '').lower()
+            print(f"ALLOW_TEST_DATA environment variable: '{allow_test_data}'")
+            if allow_test_data == 'true':
+                print("Generating test data...")
+                from tests.test_pagination import create_test_data
+                create_test_data(db)
+                print("Test data generation complete.")
                 
-                for stock_info in stocks:
-                    try:
-                        details = stock_service.get_stock_info(
-                            stock_info['symbol'],
-                            stock_info['index_type']
-                        )
-                        if details:
-                            stock = Stock(**details)
-                            db.add(stock)
-                            db.commit()
-                            print(f"Added {stock.symbol}")
-                    except Exception as e:
-                        print(f"Error adding {stock_info['symbol']}: {e}")
-                        continue
-                
-                print("Stock data fetching complete.")
-                
-                # Initialize suppression analysis
                 suppression_service = SuppressionService(db)
                 suppression_service.analyze_all_stocks()
                 print("Suppression analysis complete.")
-            except Exception as e:
-                print(f"Error during stock data fetching: {e}")
+            else:
+                print("Database is empty. Fetching real stock data...")
+                stock_service = StockService(db)
                 
-                # Fallback to test data if real data fetching fails
-                if os.getenv('ALLOW_TEST_DATA', '').lower() == 'true':
-                    print("Falling back to test data...")
-                    from tests.test_pagination import create_test_data
-                    create_test_data(db)
-                    print("Test data generation complete.")
+                # Fetch real stock data
+                try:
+                    print("Fetching stock symbols...")
+                    stocks = stock_service.fetch_index_constituents()
+                    print(f"Found {len(stocks)} stocks. Fetching details...")
                     
+                    for stock_info in stocks:
+                        try:
+                            details = stock_service.get_stock_info(
+                                stock_info['symbol'],
+                                stock_info['index_type']
+                            )
+                            if details:
+                                stock = Stock(**details)
+                                db.add(stock)
+                                db.commit()
+                                print(f"Added {stock.symbol}")
+                        except Exception as e:
+                            print(f"Error adding {stock_info['symbol']}: {e}")
+                            continue
+                    
+                    print("Stock data fetching complete.")
+                    
+                    # Initialize suppression analysis
                     suppression_service = SuppressionService(db)
                     suppression_service.analyze_all_stocks()
                     print("Suppression analysis complete.")
+                except Exception as e:
+                    print(f"Error during stock data fetching: {e}")
+                    raise  # Re-raise the exception since we don't have a fallback
         
         # Set up scheduler for daily updates
         setup_scheduler(db)
@@ -87,9 +90,8 @@ async def startup_event():
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:4173",
         "http://localhost:5173",
-        "http://localhost:3000",
+        "http://localhost:4173",
         "https://moving-average-analysis-app-k51ft6e1.devinapps.com"
     ],
     allow_credentials=True,
@@ -111,7 +113,26 @@ async def healthz(db: Session = Depends(get_db)):
     try:
         # Test database connection
         db.execute(text("SELECT 1"))
-        return {"status": "ok", "database": "connected"}
+        
+        # Check initialization status
+        stock_count = db.query(Stock).count()
+        scores_count = db.query(SuppressionScore).count()
+        
+        # Calculate expected counts
+        expected_stocks = 3000  # 1000 NASDAQ + 2000 Russell
+        expected_scores = expected_stocks * len(SuppressionService(db).ma_periods)
+        
+        initialization_complete = stock_count == expected_stocks and scores_count > 0
+        
+        return {
+            "status": "ok",
+            "database": "connected",
+            "initialization_complete": initialization_complete,
+            "progress": {
+                "stocks": f"{stock_count}/{expected_stocks}",
+                "scores": f"{scores_count}/{expected_scores}"
+            }
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database connection failed: {str(e)}")
 
@@ -173,64 +194,67 @@ async def get_historical_data(
             symbol, days_str, period = key.split('_')
             days_needed = int(days_str) + int(period)
             
-            # Use raw SQL for moving average calculation with better date handling
-            ma_sql = text(f"""
-                WITH RECURSIVE dates AS (
-                    SELECT date
+            # Use window function for efficient MA calculation
+            prices_sql = text("""
+                WITH prices AS (
+                    SELECT 
+                        date,
+                        close,
+                        ROW_NUMBER() OVER (ORDER BY date DESC) as rn
                     FROM stock_prices
                     WHERE stock_id = :stock_id
                     ORDER BY date DESC
                     LIMIT :days_needed
                 ),
-                prices AS (
-                    SELECT sp.date, sp.close
-                    FROM stock_prices sp
-                    JOIN dates d ON sp.date = d.date
-                    WHERE sp.stock_id = :stock_id
-                ),
                 ma_calc AS (
                     SELECT 
-                        p1.date,
-                        p1.close,
-                        ROUND(AVG(p2.close), 4) as ma
-                    FROM prices p1
-                    LEFT JOIN prices p2 ON 
-                        p2.date <= p1.date AND 
-                        p2.date > date(p1.date, '-' || :ma_period || ' days')
-                    GROUP BY p1.date, p1.close
+                        date,
+                        close,
+                        AVG(close) OVER (
+                            ORDER BY date ASC
+                            ROWS BETWEEN :ma_period-1 PRECEDING AND CURRENT ROW
+                        ) as ma,
+                        COUNT(*) OVER (
+                            ORDER BY date ASC
+                            ROWS BETWEEN :ma_period-1 PRECEDING AND CURRENT ROW
+                        ) as window_size
+                    FROM prices
+                    ORDER BY date ASC
                 )
                 SELECT 
                     strftime('%Y-%m-%dT%H:%M:%SZ', date) as date,
                     ROUND(close, 4) as close,
-                    COALESCE(ma, NULL) as ma
+                    CASE 
+                        WHEN window_size >= :ma_period THEN ROUND(ma, 4)
+                        ELSE NULL
+                    END as ma
                 FROM ma_calc
-                ORDER BY date DESC
+                ORDER BY date ASC
             """)
             
-            prices_with_ma = db.execute(
-                ma_sql,
+            prices = db.execute(
+                prices_sql,
                 {
                     "stock_id": stock.id,
                     "days_needed": days_needed,
-                    "ma_period": best_ma.ma_period
+                    "ma_period": int(period)
                 }
-            ).all()
+            ).fetchall()
             
-            return [
+            result = [
                 {
                     'date': price.date,
                     'price': float(price.close),
                     'ma': float(price.ma) if price.ma is not None else None
                 }
-                for price in prices_with_ma
+                for price in prices
             ]
+            
+            return result
             
         price_data = list(reversed(get_cached_prices(cache_key)))
         
-        # Format dates as ISO strings
-        for point in price_data:
-            point['date'] = point['date'].isoformat()
-            
+        # Date is already in ISO format from SQLite
         return price_data
         
     except Exception as e:
@@ -266,12 +290,18 @@ def get_db_session():
     finally:
         db.close()
 
-@lru_cache(maxsize=256)
+@lru_cache(maxsize=1024)
 def get_cached_stocks(params_str: str) -> Dict[str, Any]:
     """Get cached stock data using string parameters as cache key."""
     params = json.loads(params_str)
     with get_db_session() as db:
-        return execute_stock_query(params, db)
+        try:
+            return execute_stock_query(params, db)
+        except Exception as e:
+            print(f"Error executing stock query: {e}")
+            # Clear cache on error to prevent stale data
+            get_cached_stocks.cache_clear()
+            raise
 
 def execute_stock_query(params: dict, db: Session) -> Dict:
     """Execute the stock query with given parameters and return formatted response."""
@@ -326,32 +356,35 @@ def execute_stock_query(params: dict, db: Session) -> Dict:
     
     # Apply index type filter if provided
     if params["index_type"]:
-        query = query.filter(Stock.index_type == params["index_type"])
+        query = query.filter(Stock.index_type.in_([params["index_type"]]))
+        
+    # Create index hint for faster filtering
+    query = query.with_hint(Stock, "USE INDEX (ix_stocks_index_type)")
     
-    # Apply sorting
+    # Apply sorting with index hints
     if params["sort"] == "score":
         query = query.order_by(
             desc(best_scores.c.score) if params["order"] == "desc"
             else best_scores.c.score
-        )
+        ).with_hint(SuppressionScore, "USE INDEX (ix_suppression_scores_score)")
     elif params["sort"] == "ma_period":
         query = query.order_by(
             desc(best_scores.c.ma_period) if params["order"] == "desc"
             else best_scores.c.ma_period
-        )
+        ).with_hint(SuppressionScore, "USE INDEX (ix_suppression_scores_ma_period)")
     else:
-        # Default sort by market cap
-        query = query.order_by(desc(Stock.market_cap))
+        # Default sort by market cap with index hint
+        query = query.order_by(desc(Stock.market_cap)).with_hint(Stock, "USE INDEX (ix_stocks_market_cap)")
     
-    # Get total count directly from stocks table with filters
-    count_query = db.query(Stock)
+    # Get total count directly from stocks table with filters and index hints
+    count_query = db.query(Stock).with_hint(Stock, "USE INDEX (ix_stocks_index_type)")
     if params["search"]:
         count_query = count_query.filter(
             (Stock.symbol.ilike(f"%{params['search']}%")) |
             (Stock.name.ilike(f"%{params['search']}%"))
         )
     if params["index_type"]:
-        count_query = count_query.filter(Stock.index_type == params["index_type"])
+        count_query = count_query.filter(Stock.index_type.in_([params["index_type"]]))
     total_count = count_query.count()
     
     # Apply pagination

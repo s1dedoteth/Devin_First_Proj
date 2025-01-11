@@ -84,7 +84,7 @@ def create_test_data(db):
         print(f"Progress: {batch_end}/{total_stocks} stocks processed ({len(all_prices)} price points)")
     
     print("\nGenerating suppression scores...")
-    ma_periods = [5, 10, 20, 50, 100, 200]
+    ma_periods = [10, 20, 50, 60]  # Match the periods used in suppression_service.py
     batch_size = 100  # Process 100 stocks at a time
     
     for batch_start in range(0, total_stocks, batch_size):

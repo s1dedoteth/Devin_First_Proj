@@ -117,10 +117,21 @@ class SuppressionService:
     def analyze_stock(self, stock: Stock, ma_period: int) -> Dict:
         """
         Analyze suppression patterns for a single stock and MA period.
+        Only analyze MA periods between 10 and 60.
         
         Returns:
             Dictionary containing suppression metrics and score
         """
+        # Skip analysis if MA period is outside valid range
+        if ma_period < 10 or ma_period > 60:
+            return {
+                'ma_period': ma_period,
+                'score': 0.0,
+                'contacts': 0,
+                'breakthroughs': 0,
+                'avg_deviation': 0.0
+            }
+            
         # Get price data
         prices = pd.DataFrame([
             {
