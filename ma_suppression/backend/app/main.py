@@ -23,9 +23,39 @@ from datetime import datetime, timedelta
 DB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 os.makedirs(DB_DIR, exist_ok=True)
 DB_PATH = os.path.join(DB_DIR, "ma_suppression.db")
+# Configure SQLite to use WAL mode for better concurrency and performance
+import sqlite3
+def setup_sqlite_wal():
+    """Configure SQLite connection to use WAL mode."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute('PRAGMA journal_mode=WAL')
+    conn.execute('PRAGMA synchronous=NORMAL')
+    conn.execute('PRAGMA cache_size=-64000')  # 64MB cache
+    conn.execute('PRAGMA mmap_size=17179869184')  # 16GB mmap
+    conn.close()
+
+setup_sqlite_wal()
+
 SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={
+        "check_same_thread": False,
+        "timeout": 30,
+        "isolation_level": "READ UNCOMMITTED"
+    },
+    # Aggressive connection pooling
+    pool_size=1,
+    max_overflow=0,
+    pool_timeout=30,
+    pool_recycle=1800
+)
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+    expire_on_commit=False  # Prevent unnecessary reloads
+)
 
 # Defer table creation until after server startup
 # Base.metadata.create_all(bind=engine)

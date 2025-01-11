@@ -1,26 +1,28 @@
-FROM python:3.12-slim AS builder
+FROM pypy:3.9-slim AS builder
 
 WORKDIR /app
 
-# Install build dependencies
+# Install only essential build dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
-    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Set up virtual environment
 ENV VIRTUAL_ENV=/opt/venv
-RUN python -m venv $VIRTUAL_ENV
+RUN pypy -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Install Python dependencies
+# Install minimal dependencies first
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir wheel && \
+    # Install numpy and pandas with minimal dependencies
+    pip install --no-cache-dir numpy pandas --no-deps && \
+    # Install other dependencies
     pip install --no-cache-dir -r requirements.txt
 
 # Start fresh with minimal image
-FROM python:3.12-slim
+FROM pypy:3.9-slim
 
 WORKDIR /app
 
