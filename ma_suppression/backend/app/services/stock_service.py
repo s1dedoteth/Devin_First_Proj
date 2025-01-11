@@ -2,7 +2,7 @@ import yfinance as yf
 import pandas as pd
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional, Union, Any
 import numpy as np
 from ..models import Stock, StockPrice
 import time
@@ -19,6 +19,25 @@ try:
 except ImportError:
     AIOHTTP_AVAILABLE = False
     print("aiohttp not available, using requests as fallback")
+
+async def async_get(url: str, timeout: int = 10) -> Dict[str, Any]:
+    """Make HTTP GET request with fallback from aiohttp to requests."""
+    if AIOHTTP_AVAILABLE:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=timeout) as response:
+                    return await response.json()
+        except Exception as e:
+            print(f"aiohttp request failed: {e}, falling back to requests")
+            
+    # Synchronous fallback using requests
+    try:
+        response = requests.get(url, timeout=timeout)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        print(f"Request failed: {e}")
+        return {}
 
 # Type alias for async/sync function results
 StockList = Union[List[str], asyncio.Future[List[str]]]
@@ -220,18 +239,10 @@ class StockService:
                     'last_updated': datetime.now(pytz.UTC).isoformat()
                 }
             except Exception as e:
-                if AIOHTTP_AVAILABLE and isinstance(e, aiohttp.ClientError):
-                    error_type = "Network error"
-                else:
-                    error_type = "Error"
+                error_type = "Network error" if AIOHTTP_AVAILABLE and isinstance(e, aiohttp.ClientError) else "Error"
                 print(f"{error_type} fetching info for {symbol} (attempt {attempt + 1}): {e}")
                 if attempt < max_retries - 1:
                     await asyncio.sleep(retry_delay * (attempt + 1))  # Exponential backoff
-                continue
-            except Exception as e:
-                print(f"Error fetching info for {symbol} (attempt {attempt + 1}): {e}")
-                if attempt < max_retries - 1:
-                    time.sleep(retry_delay * (attempt + 1))
                 continue
         
         print(f"Failed to fetch info for {symbol} after {max_retries} attempts")
