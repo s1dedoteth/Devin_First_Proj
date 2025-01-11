@@ -6,12 +6,19 @@ from typing import List, Dict, Optional, Union
 import numpy as np
 from ..models import Stock, StockPrice
 import time
-import aiohttp
 import asyncio
 import io
 import pytz
-import requests  # For fallback HTTP requests
+import requests
 from .cache_service import cache_service
+
+# Try to import aiohttp, fallback to requests if not available
+try:
+    import aiohttp
+    AIOHTTP_AVAILABLE = True
+except ImportError:
+    AIOHTTP_AVAILABLE = False
+    print("aiohttp not available, using requests as fallback")
 
 # Type alias for async/sync function results
 StockList = Union[List[str], asyncio.Future[List[str]]]
@@ -212,8 +219,12 @@ class StockService:
                     'index_type': index_type,
                     'last_updated': datetime.now(pytz.UTC).isoformat()
                 }
-            except aiohttp.ClientError as e:
-                print(f"Network error fetching info for {symbol} (attempt {attempt + 1}): {e}")
+            except Exception as e:
+                if AIOHTTP_AVAILABLE and isinstance(e, aiohttp.ClientError):
+                    error_type = "Network error"
+                else:
+                    error_type = "Error"
+                print(f"{error_type} fetching info for {symbol} (attempt {attempt + 1}): {e}")
                 if attempt < max_retries - 1:
                     await asyncio.sleep(retry_delay * (attempt + 1))  # Exponential backoff
                 continue
