@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text, func, desc
@@ -7,9 +8,10 @@ from .services.stock_service import StockService
 from .services.suppression_service import SuppressionService
 from .services.scheduler import setup_scheduler
 from functools import lru_cache
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 import json
 import time
+from datetime import datetime, timedelta
 
 # Use SQLite for development
 SQLALCHEMY_DATABASE_URL = "sqlite:///./ma_suppression.db"
@@ -30,15 +32,49 @@ async def startup_event():
         # Check if database is empty
         stock_count = db.query(Stock).count()
         if stock_count == 0:
-            print("Database is empty. Generating test data...")
-            from test_pagination import create_test_data
-            create_test_data(db)
-            print("Test data generation complete.")
+            print("Database is empty. Fetching real stock data...")
+            stock_service = StockService(db)
             
-            # Initialize suppression analysis
-            suppression_service = SuppressionService(db)
-            suppression_service.analyze_all_stocks()
-            print("Suppression analysis complete.")
+            # Fetch real stock data
+            try:
+                print("Fetching stock symbols...")
+                stocks = stock_service.fetch_index_constituents()
+                print(f"Found {len(stocks)} stocks. Fetching details...")
+                
+                for stock_info in stocks:
+                    try:
+                        details = stock_service.get_stock_info(
+                            stock_info['symbol'],
+                            stock_info['index_type']
+                        )
+                        if details:
+                            stock = Stock(**details)
+                            db.add(stock)
+                            db.commit()
+                            print(f"Added {stock.symbol}")
+                    except Exception as e:
+                        print(f"Error adding {stock_info['symbol']}: {e}")
+                        continue
+                
+                print("Stock data fetching complete.")
+                
+                # Initialize suppression analysis
+                suppression_service = SuppressionService(db)
+                suppression_service.analyze_all_stocks()
+                print("Suppression analysis complete.")
+            except Exception as e:
+                print(f"Error during stock data fetching: {e}")
+                
+                # Fallback to test data if real data fetching fails
+                if os.getenv('ALLOW_TEST_DATA', '').lower() == 'true':
+                    print("Falling back to test data...")
+                    from tests.test_pagination import create_test_data
+                    create_test_data(db)
+                    print("Test data generation complete.")
+                    
+                    suppression_service = SuppressionService(db)
+                    suppression_service.analyze_all_stocks()
+                    print("Suppression analysis complete.")
         
         # Set up scheduler for daily updates
         setup_scheduler(db)
@@ -127,104 +163,141 @@ async def get_historical_data(
         if not best_ma:
             raise HTTPException(status_code=404, detail="No MA data found")
             
-        # Get historical prices for the specified days (fetch extra for MA calculation)
+        # Get historical prices with pre-calculated MA using window function
         required_days = days + best_ma.ma_period  # Extra days for MA calculation
-        prices = (
-            db.query(StockPrice)
-            .filter(StockPrice.stock_id == stock.id)
-            .order_by(StockPrice.date.desc())
-            .limit(required_days)
-            .all()
-        )
+        cache_key = f"{symbol}_{days}_{best_ma.ma_period}"
         
-        if not best_ma:
-            raise HTTPException(status_code=404, detail="No MA data found")
+        @lru_cache(maxsize=1000)
+        def get_cached_prices(key: str) -> List[Dict]:
+            symbol, days_str, period = key.split('_')
+            days_needed = int(days_str) + int(period)
             
-        # Calculate moving average
-        price_data = []
-        ma_period = best_ma.ma_period
-        prices = list(reversed(prices))  # Reverse to get chronological order
+            # Use raw SQL for moving average calculation
+            ma_sql = text(f"""
+                WITH numbered_prices AS (
+                    SELECT date, close,
+                           ROW_NUMBER() OVER (ORDER BY date DESC) as row_num
+                    FROM stock_prices
+                    WHERE stock_id = :stock_id
+                ),
+                prices_with_ma AS (
+                    SELECT p1.date, p1.close,
+                           AVG(p2.close) as ma
+                    FROM numbered_prices p1
+                    LEFT JOIN numbered_prices p2
+                    ON p2.date <= p1.date
+                    AND p2.date > date(p1.date, '-{best_ma.ma_period} days')
+                    WHERE p1.row_num <= :days_needed
+                    GROUP BY p1.date, p1.close
+                )
+                SELECT date, close, ROUND(ma, 4) as ma
+                FROM prices_with_ma
+                ORDER BY date DESC
+            """)
+            
+            prices_with_ma = db.execute(
+                ma_sql,
+                {"stock_id": stock.id, "days_needed": days_needed}
+            ).all()
+            
+            return [
+                {
+                    'date': price.date,
+                    'price': price.close,
+                    'ma': round(price.ma, 4) if price.ma is not None else None
+                }
+                for price in prices_with_ma
+            ]
+            
+        price_data = list(reversed(get_cached_prices(cache_key)))
         
-        for i, price in enumerate(prices):
-            data_point = {
-                "date": price.date.isoformat(),
-                "price": price.close,
-                "ma": None
-            }
-            
-            # Calculate MA if we have enough previous data points
-            if i >= ma_period - 1:
-                ma_sum = sum(p.close for p in prices[i - ma_period + 1:i + 1])
-                data_point["ma"] = round(ma_sum / ma_period, 4)
-                
-            price_data.append(data_point)
+        # Format dates as ISO strings
+        for point in price_data:
+            point['date'] = point['date'].isoformat()
             
         return price_data
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def get_cache_key(search: Optional[str], sort: Optional[str], order: Optional[str], page: int, limit: int) -> str:
+def get_cache_key(
+    search: Optional[str],
+    sort: Optional[str],
+    order: Optional[str],
+    page: int,
+    limit: int,
+    index_type: Optional[str] = None
+) -> str:
     """Generate a cache key from query parameters."""
     params = {
-        "search": search,
-        "sort": sort,
-        "order": order,
-        "page": page,
-        "limit": limit
+        "search": search or "",
+        "sort": sort or "score",
+        "order": order or "desc",
+        "page": max(page, 1),
+        "limit": max(limit, 1),
+        "index_type": index_type or ""
     }
     return json.dumps(params, sort_keys=True)
 
+from contextlib import contextmanager
+
+@contextmanager
+def get_db_session():
+    """Get database session with proper cleanup."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
 @lru_cache(maxsize=256)
-def get_cached_stocks(cache_key: str, db: Session) -> Tuple[list, int]:
-    """Cached function to get stocks data."""
-    # Parse cache key back into parameters
-    params = json.loads(cache_key)
-    
-    # Start with base query
-    query = db.query(
-        Stock,
-        SuppressionScore.ma_period,
-        SuppressionScore.score,
-        StockPrice.close,
-        StockPrice.date
-    )
-    
-    # Join with suppression scores and get the highest score for each stock
-    subq = (
-        db.query(
-            SuppressionScore.stock_id,
-            func.max(SuppressionScore.score).label('max_score')
-        )
-        .group_by(SuppressionScore.stock_id)
-        .subquery()
-    )
-    
-    query = query.join(subq, Stock.id == subq.c.stock_id)
-    query = query.join(
-        SuppressionScore,
-        (SuppressionScore.stock_id == Stock.id) & 
-        (SuppressionScore.score == subq.c.max_score)
-    )
-    
-    # Get latest price
+def get_cached_stocks(params_str: str) -> Dict[str, Any]:
+    """Get cached stock data using string parameters as cache key."""
+    params = json.loads(params_str)
+    with get_db_session() as db:
+        return execute_stock_query(params, db)
+
+def execute_stock_query(params: dict, db: Session) -> Dict:
+    """Execute the stock query with given parameters and return formatted response."""
+    # Get latest prices first
     latest_prices = (
         db.query(
             StockPrice.stock_id,
-            func.max(StockPrice.date).label('max_date')
+            StockPrice.date,
+            StockPrice.close,
+            func.row_number().over(
+                partition_by=StockPrice.stock_id,
+                order_by=StockPrice.date.desc()
+            ).label('rn')
         )
-        .group_by(StockPrice.stock_id)
         .subquery()
     )
     
-    query = query.join(
-        latest_prices,
-        Stock.id == latest_prices.c.stock_id
+    # Get best suppression scores with COALESCE to handle NULLs
+    best_scores = (
+        db.query(
+            SuppressionScore.stock_id,
+            func.coalesce(SuppressionScore.ma_period, 20).label('ma_period'),
+            func.coalesce(SuppressionScore.score, 0.0).label('score'),
+            func.row_number().over(
+                partition_by=SuppressionScore.stock_id,
+                order_by=func.coalesce(SuppressionScore.score, 0.0).desc()
+            ).label('rn')
+        )
+        .subquery()
     )
-    query = query.join(
-        StockPrice,
-        (StockPrice.stock_id == Stock.id) &
-        (StockPrice.date == latest_prices.c.max_date)
+    
+    # Build main query with efficient joins
+    query = (
+        db.query(
+            Stock,
+            best_scores.c.ma_period,
+            best_scores.c.score,
+            latest_prices.c.close,
+            latest_prices.c.date
+        )
+        .outerjoin(best_scores, (Stock.id == best_scores.c.stock_id) & (best_scores.c.rn == 1))
+        .outerjoin(latest_prices, (Stock.id == latest_prices.c.stock_id) & (latest_prices.c.rn == 1))
     )
     
     # Apply search filter if provided
@@ -235,23 +308,35 @@ def get_cached_stocks(cache_key: str, db: Session) -> Tuple[list, int]:
             (Stock.name.ilike(search))
         )
     
+    # Apply index type filter if provided
+    if params["index_type"]:
+        query = query.filter(Stock.index_type == params["index_type"])
+    
     # Apply sorting
     if params["sort"] == "score":
         query = query.order_by(
-            desc(SuppressionScore.score) if params["order"] == "desc"
-            else SuppressionScore.score
+            desc(best_scores.c.score) if params["order"] == "desc"
+            else best_scores.c.score
         )
     elif params["sort"] == "ma_period":
         query = query.order_by(
-            desc(SuppressionScore.ma_period) if params["order"] == "desc"
-            else SuppressionScore.ma_period
+            desc(best_scores.c.ma_period) if params["order"] == "desc"
+            else best_scores.c.ma_period
         )
     else:
         # Default sort by market cap
         query = query.order_by(desc(Stock.market_cap))
     
-    # Get total count
-    total_count = query.count()
+    # Get total count directly from stocks table with filters
+    count_query = db.query(Stock)
+    if params["search"]:
+        count_query = count_query.filter(
+            (Stock.symbol.ilike(f"%{params['search']}%")) |
+            (Stock.name.ilike(f"%{params['search']}%"))
+        )
+    if params["index_type"]:
+        count_query = count_query.filter(Stock.index_type == params["index_type"])
+    total_count = count_query.count()
     
     # Apply pagination
     page = max(params["page"], 1)
@@ -262,18 +347,29 @@ def get_cached_stocks(cache_key: str, db: Session) -> Tuple[list, int]:
     # Execute query and format results
     stocks = []
     for stock, ma_period, score, latest_price, latest_date in query.all():
+        # Handle NULL values
+        ma_period = ma_period or 20  # Default to MA20 if NULL
+        score = score or 0.0  # Default to 0.0 if NULL
+        latest_price = latest_price or 0.0  # Default to 0.0 if NULL
+        
         stocks.append({
             "symbol": stock.symbol,
             "name": stock.name,
             "market_cap": stock.market_cap,
             "index_type": stock.index_type,
             "best_ma": f"MA{ma_period}",
-            "suppression_score": round(score, 4),
-            "latest_price": latest_price,
-            "latest_date": latest_date
+            "suppression_score": round(float(score), 4),
+            "latest_price": float(latest_price),
+            "latest_date": latest_date.isoformat() if latest_date else None
         })
     
-    return stocks, total_count
+    return {
+        "stocks": stocks,
+        "total": total_count,
+        "page": params["page"],
+        "limit": params["limit"],
+        "total_pages": (total_count + params["limit"] - 1) // params["limit"]
+    }
 
 @app.get("/api/stocks")
 async def get_stocks(
@@ -282,7 +378,8 @@ async def get_stocks(
     sort: Optional[str] = "score",  # Default sort by score
     order: Optional[str] = "desc",
     page: int = 1,
-    limit: int = 50  # Default 50 stocks per page
+    limit: int = 50,  # Default 50 stocks per page
+    index_type: Optional[str] = None
 ):
     """
     Get list of stocks with their best moving averages and suppression scores.
@@ -291,16 +388,30 @@ async def get_stocks(
         search: Optional search term for stock symbol or name
         sort: Sort field ('score' or 'ma_period')
         order: Sort order ('asc' or 'desc')
+        index_type: Filter by index type ('RUSSELL2000' or 'NASDAQ')
     """
     try:
-        # Generate cache key from query parameters
-        cache_key = get_cache_key(search, sort, order, page, limit)
+        # Prepare query parameters
+        params = {
+            "search": search or "",
+            "sort": sort or "score",
+            "order": order or "desc",
+            "page": max(page, 1),
+            "limit": max(limit, 1),
+            "index_type": index_type or ""
+        }
+        
+        # Convert params to string for cache key
+        params_str = json.dumps(params, sort_keys=True)
         
         # Get data from cache or compute it
         query_start = time.time()
-        stocks, total_count = get_cached_stocks(cache_key, db)
+        result = get_cached_stocks(params_str)
+        stocks = result.get("stocks", [])
+        total_count = result.get("total", 0)
         query_time = time.time() - query_start
-        print(f"Query took {query_time:.2f}s for {len(stocks)} stocks (cached={get_cached_stocks.cache_info().hits}/{get_cached_stocks.cache_info().misses})")
+        cache_info = get_cached_stocks.cache_info()
+        print(f"Query took {query_time:.2f}s for {len(stocks)} stocks (hits={cache_info.hits}, misses={cache_info.misses}, size={cache_info.currsize})")
         
         # Return paginated response
         return {
@@ -310,15 +421,6 @@ async def get_stocks(
             "limit": limit,
             "total_pages": (total_count + limit - 1) // limit
         }
-        
-        return {
-            "stocks": result,
-            "total": total_count,
-            "page": page,
-            "limit": limit,
-            "total_pages": (total_count + limit - 1) // limit
-        }
-        
     except Exception as e:
         raise HTTPException(
             status_code=500,

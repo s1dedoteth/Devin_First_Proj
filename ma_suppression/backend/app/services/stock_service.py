@@ -383,8 +383,8 @@ class StockService:
                 fast_info = stock.fast_info
                 info = stock.info
                 
-                # Download recent historical data with valid period
-                data = stock.history(period='1mo')  # Use 1 month of data for basic info
+                # Download recent historical data with valid period (1 year for MA calculations)
+                data = stock.history(period='1y')  # Fetch 1 year of data for proper MA analysis
                 if data.empty:
                     return None
                 

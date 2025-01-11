@@ -8,8 +8,8 @@ class SuppressionService:
     def __init__(self, db: Session):
         """Initialize suppression service with database session."""
         self.db = db
-        # Default MA periods to analyze
-        self.ma_periods = [5, 10, 20, 50, 100, 200]
+        # Default MA periods to analyze (limited to MA10-MA60 range)
+        self.ma_periods = [10, 20, 50, 60]  # Removed MA5 and periods above MA60
         # Weights for suppression score calculation
         self.w1 = 0.5  # Contact rule weight
         self.w2 = 0.3  # Breakthrough rule weight

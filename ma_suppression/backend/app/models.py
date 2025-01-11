@@ -30,6 +30,8 @@ class StockPrice(Base):
     __table_args__ = (
         # Composite index for efficient time series queries
         Index('idx_stock_date', 'stock_id', 'date'),
+        # Index for date-based queries
+        Index('idx_stock_date_desc', 'stock_id', date.desc()),
     )
 
 class SuppressionScore(Base):
@@ -49,4 +51,6 @@ class SuppressionScore(Base):
         Index('idx_stock_score', 'stock_id', 'score'),
         # Index for finding best MA period
         Index('idx_stock_ma', 'stock_id', 'ma_period'),
+        # Index for score sorting with stock info
+        Index('idx_score_stock', 'score', 'stock_id', 'ma_period'),
     )
