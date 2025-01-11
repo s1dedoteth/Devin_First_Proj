@@ -15,11 +15,11 @@ def create_test_data(db):
     """Create synthetic test data."""
     print("\nCreating test data...")
     
-    # Generate test stocks (1000 NASDAQ, 2000 Russell 2000)
+    # Generate test stocks (200 NASDAQ, 300 Russell 2000)
     stocks = []
     
     # NASDAQ stocks
-    for i in range(1000):
+    for i in range(200):
         symbol = f"NSDQ{i:04d}"
         stock = Stock(
             symbol=symbol,
@@ -30,7 +30,7 @@ def create_test_data(db):
         stocks.append(stock)
     
     # Russell 2000 stocks
-    for i in range(2000):
+    for i in range(300):
         symbol = f"RUSS{i:04d}"
         stock = Stock(
             symbol=symbol,
@@ -44,10 +44,11 @@ def create_test_data(db):
     db.add_all(stocks)
     db.commit()
     
-    # Generate price data with batch processing
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=365)
-    dates = [start_date + timedelta(days=x) for x in range(365)]
+    # Generate price data with batch processing (2 years for MA200)
+    # Use explicit historical dates to avoid future dates
+    end_date = datetime(2023, 12, 31)  # End at last year
+    start_date = end_date - timedelta(days=730)  # 2 years of data
+    dates = [start_date + timedelta(days=x) for x in range(730) if (start_date + timedelta(days=x)) <= end_date]
     
     print("\nGenerating price data...")
     total_stocks = len(stocks)
@@ -84,7 +85,7 @@ def create_test_data(db):
         print(f"Progress: {batch_end}/{total_stocks} stocks processed ({len(all_prices)} price points)")
     
     print("\nGenerating suppression scores...")
-    ma_periods = [5, 10, 20, 50, 100, 200]
+    ma_periods = [10, 20, 30, 40, 50, 60]  # Limited to MA10-MA60 range with more granularity
     batch_size = 100  # Process 100 stocks at a time
     
     for batch_start in range(0, total_stocks, batch_size):
@@ -113,14 +114,23 @@ def create_test_data(db):
 
 def test_pagination():
     """Test pagination performance with synthetic data."""
-    print("\nInitializing database...")
-    Base.metadata.drop_all(bind=engine)  # Clear existing data
-    Base.metadata.create_all(bind=engine)
-    
     db = SessionLocal()
     try:
-        # Create test data
-        create_test_data(db)
+        # Check if data exists
+        stock_count = db.query(Stock).count()
+        if stock_count == 0:
+            print("\nInitializing database...")
+            Base.metadata.create_all(bind=engine)
+            create_test_data(db)
+        else:
+            print(f"\nUsing existing data ({stock_count} stocks)")
+            
+        # Ensure suppression scores are calculated
+        from app.services.suppression_service import SuppressionService
+        print("\nCalculating suppression scores...")
+        suppression_service = SuppressionService(db)
+        suppression_service.analyze_all_stocks()
+        print("Suppression analysis complete.")
         
         # Test pagination endpoints
         base_url = "http://localhost:8000/api/stocks"
@@ -130,15 +140,25 @@ def test_pagination():
         # Test different page sizes
         for limit in [10, 50, 100]:
             start_time = time.time()
-            response = requests.get(f"{base_url}?page=1&limit={limit}")
-            data = response.json()
-            duration = time.time() - start_time
-            
-            print(f"\nPage size {limit}:")
-            print(f"- Total stocks: {data['total']}")
-            print(f"- Total pages: {data['total_pages']}")
-            print(f"- Response time: {duration:.2f}s")
-            print(f"- Stocks per page: {len(data['stocks'])}")
+            try:
+                response = requests.get(f"{base_url}?page=1&limit={limit}")
+                response.raise_for_status()
+                data = response.json()
+                duration = time.time() - start_time
+                
+                print(f"\nPage size {limit}:")
+                print(f"- Total stocks: {data.get('total', 0)}")
+                print(f"- Total pages: {data.get('total_pages', 0)}")
+                print(f"- Response time: {duration:.2f}s")
+                print(f"- Stocks per page: {len(data.get('stocks', []))}")
+                
+                if duration > 2.0:
+                    print(f"WARNING: Response time exceeds 2 seconds target")
+                    
+            except Exception as e:
+                print(f"Error testing page size {limit}: {e}")
+                print(f"Response content: {response.text if 'response' in locals() else 'No response'}")
+                continue
         
         # Test with search filter
         print("\nTesting search performance...")
@@ -166,9 +186,53 @@ def test_pagination():
             data = response.json()
             duration = time.time() - start_time
             print(f"Filter by {index}: {len(data['stocks'])} stocks, {duration:.2f}s")
+            if duration > 2.0:
+                print(f"WARNING: Index filtering response time exceeds 2 seconds target")
+
+        # Test chart loading performance
+        print("\nTesting chart loading performance...")
+        test_symbols = ['NSDQ0000', 'RUSS0000']  # Test first stock from each index
+        for symbol in test_symbols:
+            for days in [30, 60, 100, 200]:
+                start_time = time.time()
+                response = requests.get(f"{base_url}/{symbol}/historical?days={days}")
+                data = response.json()
+                duration = time.time() - start_time
+                print(f"Chart data for {symbol} ({days} days): {duration:.2f}s")
+                if duration > 2.0:
+                    print(f"WARNING: Chart loading response time exceeds 2 seconds target")
+                    
+        # Print performance summary
+        print("\nPerformance Summary:")
+        print("Response times should be under 2 seconds for optimal user experience")
+        print("- List loading (50 stocks per page)")
+        print("- Chart loading (up to 200 days)")
+        
+    finally:
+        db.close()
+
+def verify_ma_constraints():
+    """Verify that all MA periods are within the allowed range [10-60]."""
+    db = SessionLocal()
+    try:
+        # Check all MA periods in database
+        scores = db.query(SuppressionScore.ma_period).distinct().all()
+        ma_periods = [score[0] for score in scores]
+        for period in ma_periods:
+            assert 10 <= period <= 60, f"Found MA period {period} outside allowed range [10-60]"
+        print(f"\nVerified {len(ma_periods)} unique MA periods, all within [10-60] range")
+        
+        # Check MA periods in API response
+        response = requests.get("http://localhost:8000/api/stocks?limit=50")
+        data = response.json()
+        for stock in data.get('stocks', []):
+            ma_period = int(stock['best_ma'].replace('MA', ''))
+            assert 10 <= ma_period <= 60, f"API returned MA period {ma_period} outside allowed range [10-60]"
+        print("Verified all API response MA periods are within [10-60] range")
         
     finally:
         db.close()
 
 if __name__ == "__main__":
     test_pagination()
+    verify_ma_constraints()

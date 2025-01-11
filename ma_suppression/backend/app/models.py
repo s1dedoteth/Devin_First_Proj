@@ -8,12 +8,17 @@ class Stock(Base):
     __tablename__ = "stocks"
     
     id = Column(Integer, primary_key=True, index=True)
-    symbol = Column(String(10), unique=True, index=True)
+    symbol = Column(String(10), index=True)  # Removed unique constraint
     name = Column(String(100), index=True)
     market_cap = Column(Float, index=True)  # Indexed for filtering by market cap
     index_type = Column(String(20), index=True)  # "RUSSELL2000" or "NASDAQ", indexed for filtering
     prices = relationship("StockPrice", back_populates="stock")
     suppression_scores = relationship("SuppressionScore", back_populates="stock")
+    
+    __table_args__ = (
+        # Composite unique constraint for symbol + index_type
+        Index('idx_symbol_index', 'symbol', 'index_type', unique=True),
+    )
 
 class StockPrice(Base):
     __tablename__ = "stock_prices"
@@ -30,6 +35,8 @@ class StockPrice(Base):
     __table_args__ = (
         # Composite index for efficient time series queries
         Index('idx_stock_date', 'stock_id', 'date'),
+        # Index for date-based queries
+        Index('idx_stock_date_desc', 'stock_id', date.desc()),
     )
 
 class SuppressionScore(Base):
@@ -49,4 +56,6 @@ class SuppressionScore(Base):
         Index('idx_stock_score', 'stock_id', 'score'),
         # Index for finding best MA period
         Index('idx_stock_ma', 'stock_id', 'ma_period'),
+        # Index for score sorting with stock info
+        Index('idx_score_stock', 'score', 'stock_id', 'ma_period'),
     )
