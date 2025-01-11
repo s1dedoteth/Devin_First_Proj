@@ -56,9 +56,11 @@ def setup_sqlite_wal():
     """Configure SQLite connection to use WAL mode."""
     conn = sqlite3.connect(DB_PATH)
     conn.execute('PRAGMA journal_mode=WAL')
-    conn.execute('PRAGMA synchronous=NORMAL')
-    conn.execute('PRAGMA cache_size=-64000')  # 64MB cache
-    conn.execute('PRAGMA mmap_size=17179869184')  # 16GB mmap
+    conn.execute('PRAGMA synchronous=OFF')  # Disable synchronous writes for better performance
+    conn.execute('PRAGMA cache_size=-2000')  # 2MB cache
+    conn.execute('PRAGMA mmap_size=8388608')  # 8MB mmap
+    conn.execute('PRAGMA temp_store=MEMORY')  # Store temp tables in memory
+    conn.execute('PRAGMA page_size=4096')  # Smaller page size
     conn.close()
 
 setup_sqlite_wal()
@@ -110,7 +112,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 async def init_database():
-    """Initialize database asynchronously with minimal memory usage."""
+    """Initialize database asynchronously with absolute minimal memory usage."""
     global is_initializing, initialization_progress
     
     if is_initializing:
@@ -119,82 +121,141 @@ async def init_database():
     is_initializing = True
     
     try:
+        # Force aggressive garbage collection
+        gc.collect()
+        gc.collect()  # Double collection to ensure maximum memory release
+        
         # Initialize models only when needed
         init_models()
         
-        # Force garbage collection after initialization
-        gc.collect()
-        
         db = SessionLocal()
         try:
-            # Check database status
-            stock_count = db.query(Stock).count()
-            scores_count = db.query(SuppressionScore).count()
+            # Check database status with raw SQL for minimal memory usage
+            stock_count = db.execute(text("SELECT COUNT(*) FROM stocks")).scalar()
+            scores_count = db.execute(text("SELECT COUNT(*) FROM suppression_scores")).scalar()
             print(f"\nDatabase status: {stock_count} stocks, {scores_count} scores")
             
             # Initialize database if empty
             if stock_count == 0:
-                print("\nInitializing database with minimal test data...")
+                print("\nInitializing database with absolute minimal test data...")
+                
+                # Clear any existing data first
+                db.execute(text("DELETE FROM suppression_scores"))
+                db.execute(text("DELETE FROM stock_prices"))
+                db.execute(text("DELETE FROM stocks"))
+                db.commit()
                 
                 # Import test data module only when needed
                 from tests.test_pagination import create_test_data
                 
-                # Process in very small batches
-                batch_size = 2  # Reduced batch size for lower memory usage
+                # Create minimal test data (2 stocks at a time)
                 try:
-                    create_test_data(db, batch_size=batch_size)
+                    create_test_data(db, batch_size=2)
                     print("Test data created successfully")
-                    await asyncio.sleep(1)
-                    gc.collect()  # Force garbage collection after data creation
+                    await asyncio.sleep(0.5)
+                    gc.collect()
                 except Exception as e:
                     print(f"Error creating test data: {e}")
                     return
                 
-                # Update progress
-                stock_count = db.query(Stock).count()
-                initialization_progress["stocks"] = stock_count
+                # Update progress with raw SQL
+                stock_count = db.execute(text("SELECT COUNT(*) FROM stocks")).scalar()
+                initialization_progress["stocks"] = int(stock_count or 0)
                 
-                # Calculate scores in minimal batches
+                # Calculate suppression scores one stock at a time
                 print("\nCalculating suppression scores...")
                 suppression_service = SuppressionService(db)
                 
-                # Process stocks in chunks to minimize memory usage
-                offset = 0
-                while True:
-                    # Get a small batch of stocks
-                    stocks = db.query(Stock).offset(offset).limit(batch_size).all()
-                    if not stocks:
-                        break
+                # Get stock IDs only to minimize memory usage
+                stock_ids = [id[0] for id in db.execute(text("SELECT id FROM stocks ORDER BY id")).fetchall()]
+                total_stocks = len(stock_ids)
+                
+                for i, stock_id in enumerate(stock_ids, 1):
+                    try:
+                        # Process one stock at a time
+                        stock = db.execute(
+                            text("SELECT * FROM stocks WHERE id = :id"),
+                            {"id": stock_id}
+                        ).fetchone()
                         
-                    for stock in stocks:
+                        if not stock:
+                            continue
+                            
+                        # Get prices for this stock only
+                        prices = db.execute(
+                            text("SELECT * FROM stock_prices WHERE stock_id = :id ORDER BY date"),
+                            {"id": stock_id}
+                        ).fetchall()
+                        
+                        # Create Stock object with minimal data
+                        stock_obj = Stock(
+                            id=stock.id,
+                            symbol=stock.symbol,
+                            name=stock.name,
+                            market_cap=stock.market_cap,
+                            index_type=stock.index_type
+                        )
+                        
+                        # Create price objects with minimal data
+                        stock_obj.prices = [
+                            StockPrice(
+                                stock_id=stock.id,
+                                date=price.date,
+                                open=price.open,
+                                high=price.high,
+                                low=price.low,
+                                close=price.close
+                            )
+                            for price in prices
+                        ]
+                        
+                        scores_batch = []
                         for period in suppression_service.ma_periods:
                             try:
-                                result = suppression_service.analyze_stock(stock, period)
+                                result = suppression_service.analyze_stock(stock_obj, period)
                                 if result:
-                                    score = SuppressionScore(
-                                        stock_id=stock.id,
-                                        ma_period=int(period),
-                                        score=float(result['score']),
-                                        contacts=int(result['contacts']),
-                                        breakthroughs=int(result['breakthroughs']),
-                                        avg_deviation=float(result['avg_deviation'])
+                                    scores_batch.append(
+                                        SuppressionScore(
+                                            stock_id=stock.id,
+                                            ma_period=int(period),
+                                            score=float(result['score']),
+                                            contacts=int(result['contacts']),
+                                            breakthroughs=int(result['breakthroughs']),
+                                            avg_deviation=float(result['avg_deviation'])
+                                        )
                                     )
-                                    db.add(score)
                             except Exception as e:
                                 print(f"Error analyzing {stock.symbol} MA{period}: {e}")
                                 continue
                         
-                        # Commit after each stock to minimize memory usage
-                        db.commit()
-                        scores_count = db.query(SuppressionScore).count()
-                        initialization_progress["scores"] = scores_count
+                        # Commit scores for this stock
+                        if scores_batch:
+                            db.add_all(scores_batch)
+                            db.commit()
+                            
+                            # Update progress with raw SQL
+                            scores_count = db.execute(text("SELECT COUNT(*) FROM suppression_scores")).scalar()
+                            initialization_progress["scores"] = int(scores_count or 0)
+                            print(f"Progress: {i}/{total_stocks} stocks analyzed ({stock.symbol}), {scores_count} total scores")
                         
-                        # Force garbage collection and yield
+                        # Clear references and force garbage collection
+                        del stock_obj
+                        del prices
+                        del scores_batch
                         gc.collect()
-                        await asyncio.sleep(0.1)
-                    
-                    offset += batch_size
-                    print(f"Progress: {offset} stocks processed, {scores_count} scores calculated")
+                        
+                        # Monitor memory usage
+                        import psutil
+                        process = psutil.Process()
+                        memory_info = process.memory_info()
+                        print(f"Memory usage: {memory_info.rss / 1024 / 1024:.1f} MB")
+                        
+                        await asyncio.sleep(0.1)  # Allow other tasks to run
+                        
+                    except Exception as e:
+                        print(f"Error processing stock {stock_id}: {e}")
+                        db.rollback()
+                        continue
             
             # Set up scheduler with minimal configuration
             setup_scheduler(db)

@@ -30,9 +30,9 @@ def create_test_data(db, batch_size: int = 2):
             batch.append(stock)
         return batch
     
-    # Generate absolute minimal test data (5 NASDAQ, 5 Russell 2000)
-    total_nasdaq = 5
-    total_russell = 5
+    # Generate absolute minimal test data (2 NASDAQ, 2 Russell 2000)
+    total_nasdaq = 2
+    total_russell = 2
     
     # Process NASDAQ stocks in small batches
     for i in range(0, total_nasdaq, batch_size):
