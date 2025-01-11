@@ -148,32 +148,47 @@ def test_pagination():
         print("Suppression analysis complete.")
         
         # Test pagination endpoints
-        base_url = "http://localhost:8000/api/stocks"
+        base_url = "https://app-vicjccoq.fly.dev/api/stocks"
+        max_retries = 3
+        retry_delay = 5  # seconds
         
         print("\nTesting pagination performance...")
+        print(f"Using deployed URL: {base_url}")
         
-        # Test different page sizes
+        # Test different page sizes with retries
         for limit in [10, 50, 100]:
-            start_time = time.time()
-            try:
-                response = requests.get(f"{base_url}?page=1&limit={limit}")
-                response.raise_for_status()
-                data = response.json()
-                duration = time.time() - start_time
-                
-                print(f"\nPage size {limit}:")
-                print(f"- Total stocks: {data.get('total', 0)}")
-                print(f"- Total pages: {data.get('total_pages', 0)}")
-                print(f"- Response time: {duration:.2f}s")
-                print(f"- Stocks per page: {len(data.get('stocks', []))}")
-                
-                if duration > 2.0:
-                    print(f"WARNING: Response time exceeds 2 seconds target")
+            for attempt in range(max_retries):
+                start_time = time.time()
+                try:
+                    response = requests.get(
+                        f"{base_url}?page=1&limit={limit}",
+                        timeout=10  # Add timeout
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    duration = time.time() - start_time
                     
-            except Exception as e:
-                print(f"Error testing page size {limit}: {e}")
-                print(f"Response content: {response.text if 'response' in locals() else 'No response'}")
-                continue
+                    print(f"\nPage size {limit}:")
+                    print(f"- Total stocks: {data.get('total', 0)}")
+                    print(f"- Total pages: {data.get('total_pages', 0)}")
+                    print(f"- Response time: {duration:.2f}s")
+                    print(f"- Stocks per page: {len(data.get('stocks', []))}")
+                    
+                    if duration > 2.0:
+                        print(f"WARNING: Response time exceeds 2 seconds target")
+                    
+                    # Success, break retry loop
+                    break
+                    
+                except Exception as e:
+                    print(f"Attempt {attempt + 1}/{max_retries} failed: {e}")
+                    if attempt < max_retries - 1:
+                        print(f"Retrying in {retry_delay} seconds...")
+                        time.sleep(retry_delay)
+                    else:
+                        print("All retries failed")
+                        print(f"Response content: {response.text if 'response' in locals() else 'No response'}")
+                    continue
         
         # Test with search filter
         print("\nTesting search performance...")
