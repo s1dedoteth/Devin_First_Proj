@@ -1,8 +1,14 @@
 import os
+import gc
+import asyncio
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text, func, desc
 from sqlalchemy.orm import sessionmaker, Session
+from contextlib import asynccontextmanager
+
+# Force garbage collection on import
+gc.collect()
 from .models import Base, Stock, StockPrice, SuppressionScore
 from .services.stock_service import StockService
 from .services.suppression_service import SuppressionService
@@ -21,8 +27,8 @@ SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Create all tables
-Base.metadata.create_all(bind=engine)
+# Defer table creation until after server startup
+# Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
@@ -139,8 +145,14 @@ async def init_database():
 
 @app.on_event("startup")
 async def startup_event():
-    """Start database initialization in background."""
-    asyncio.create_task(init_database())
+    """Start database initialization in background after server is up."""
+    # Delay database initialization to allow server to start with minimal memory
+    async def delayed_init():
+        await asyncio.sleep(5)  # Give server time to stabilize
+        await init_database()
+    
+    # Create background task
+    asyncio.create_task(delayed_init())
 
 # Configure CORS for frontend
 app.add_middleware(
