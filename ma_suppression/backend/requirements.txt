@@ -1,20 +1,14 @@
-# Core dependencies
+# Core dependencies installed in Dockerfile
 fastapi==0.104.1
 uvicorn==0.24.0
 sqlalchemy==2.0.23
 
-# Data processing (installed separately in Dockerfile)
+# Minimal dependencies
+httpx==0.25.0
+pytz==2023.3.post1
+python-dotenv==1.0.0
+schedule==1.2.0
+
+# Optional dependencies - installed on demand
 numpy
 pandas
-
-# Minimal HTTP client
-httpx==0.25.0
-
-# Date handling
-pytz==2023.3.post1
-
-# Environment variables
-python-dotenv==1.0.0
-
-# Task scheduling (lightweight alternative)
-schedule==1.2.0

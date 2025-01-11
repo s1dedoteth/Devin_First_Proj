@@ -1,23 +1,50 @@
 import os
 import gc
+import json
+import time
 import asyncio
+import importlib
+from datetime import datetime, timedelta
+from typing import Dict, Any, Optional, Tuple, List
+from functools import lru_cache
+from contextlib import asynccontextmanager
+
+# Core imports that are always needed
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, text, func, desc
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
-from contextlib import asynccontextmanager
 
 # Force garbage collection on import
 gc.collect()
+
+# Lazy imports
+def import_models():
+    """Import models only when needed."""
+    from .models import Base, Stock, StockPrice, SuppressionScore
+    return Base, Stock, StockPrice, SuppressionScore
+
+def import_services():
+    """Import services only when needed."""
+    from .services.stock_service import StockService
+    from .services.suppression_service import SuppressionService
+    from .services.scheduler import setup_scheduler
+    return StockService, SuppressionService, setup_scheduler
+
+# Import models and services at module level but with minimal initial footprint
 from .models import Base, Stock, StockPrice, SuppressionScore
 from .services.stock_service import StockService
 from .services.suppression_service import SuppressionService
 from .services.scheduler import setup_scheduler
-from functools import lru_cache
-from typing import Dict, Any, Optional, Tuple, List
-import json
-import time
-from datetime import datetime, timedelta
+
+# Defer heavy initialization until needed
+def init_models():
+    """Initialize database models."""
+    Base.metadata.create_all(bind=engine)
+
+def init_services(db):
+    """Initialize services with database session."""
+    return StockService(db), SuppressionService(db), setup_scheduler
 
 # Use SQLite with proper path
 DB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
@@ -90,47 +117,56 @@ async def init_database():
         return
         
     is_initializing = True
-    db = SessionLocal()
     
     try:
-        # Force garbage collection
+        # Initialize models only when needed
+        init_models()
+        
+        # Force garbage collection after initialization
         gc.collect()
         
-        # Check database status
-        stock_count = db.query(Stock).count()
-        scores_count = db.query(SuppressionScore).count()
-        print(f"\nDatabase status: {stock_count} stocks, {scores_count} scores")
-        
-        # Initialize database if empty
-        if stock_count == 0:
-            print("\nInitializing database with minimal test data...")
-            from tests.test_pagination import create_test_data
-            
-            # Create test data in smaller chunks
-            batch_size = 5  # Process 5 stocks at a time
-            try:
-                create_test_data(db, batch_size=batch_size)
-                print("Test data created successfully")
-                await asyncio.sleep(1)  # Allow other tasks to run
-            except Exception as e:
-                print(f"Error creating test data: {e}")
-                return
-            
-            # Update progress
+        db = SessionLocal()
+        try:
+            # Check database status
             stock_count = db.query(Stock).count()
-            initialization_progress["stocks"] = stock_count
+            scores_count = db.query(SuppressionScore).count()
+            print(f"\nDatabase status: {stock_count} stocks, {scores_count} scores")
             
-            # Calculate suppression scores in very small batches
-            print("\nCalculating suppression scores...")
-            suppression_service = SuppressionService(db)
-            stocks = db.query(Stock).all()
-            total_stocks = len(stocks)
-            
-            for i in range(0, total_stocks, batch_size):
+            # Initialize database if empty
+            if stock_count == 0:
+                print("\nInitializing database with minimal test data...")
+                
+                # Import test data module only when needed
+                from tests.test_pagination import create_test_data
+                
+                # Process in very small batches
+                batch_size = 2  # Reduced batch size for lower memory usage
                 try:
-                    # Process a small batch
-                    batch = stocks[i:i + batch_size]
-                    for stock in batch:
+                    create_test_data(db, batch_size=batch_size)
+                    print("Test data created successfully")
+                    await asyncio.sleep(1)
+                    gc.collect()  # Force garbage collection after data creation
+                except Exception as e:
+                    print(f"Error creating test data: {e}")
+                    return
+                
+                # Update progress
+                stock_count = db.query(Stock).count()
+                initialization_progress["stocks"] = stock_count
+                
+                # Calculate scores in minimal batches
+                print("\nCalculating suppression scores...")
+                suppression_service = SuppressionService(db)
+                
+                # Process stocks in chunks to minimize memory usage
+                offset = 0
+                while True:
+                    # Get a small batch of stocks
+                    stocks = db.query(Stock).offset(offset).limit(batch_size).all()
+                    if not stocks:
+                        break
+                        
+                    for stock in stocks:
                         for period in suppression_service.ma_periods:
                             try:
                                 result = suppression_service.analyze_stock(stock, period)
@@ -147,31 +183,31 @@ async def init_database():
                             except Exception as e:
                                 print(f"Error analyzing {stock.symbol} MA{period}: {e}")
                                 continue
+                        
+                        # Commit after each stock to minimize memory usage
+                        db.commit()
+                        scores_count = db.query(SuppressionScore).count()
+                        initialization_progress["scores"] = scores_count
+                        
+                        # Force garbage collection and yield
+                        gc.collect()
+                        await asyncio.sleep(0.1)
                     
-                    # Commit batch and update progress
-                    db.commit()
-                    scores_count = db.query(SuppressionScore).count()
-                    initialization_progress["scores"] = scores_count
-                    print(f"Progress: {i + len(batch)}/{total_stocks} stocks analyzed, {scores_count} scores calculated")
-                    
-                    # Force garbage collection and yield
-                    gc.collect()
-                    await asyncio.sleep(0.1)  # Allow other tasks to run
-                    
-                except Exception as e:
-                    print(f"Error processing batch {i}-{i+batch_size}: {e}")
-                    db.rollback()
-                    continue
-        
-        # Set up scheduler
-        setup_scheduler(db)
-        print("Scheduler initialized")
-        
+                    offset += batch_size
+                    print(f"Progress: {offset} stocks processed, {scores_count} scores calculated")
+            
+            # Set up scheduler with minimal configuration
+            setup_scheduler(db)
+            print("Scheduler initialized")
+            
+        finally:
+            db.close()
+            
     except Exception as e:
         print(f"Error during initialization: {e}")
     finally:
         is_initializing = False
-        db.close()
+        gc.collect()  # Final garbage collection
 
 @app.on_event("startup")
 async def startup_event():

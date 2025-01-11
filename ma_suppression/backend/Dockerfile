@@ -1,34 +1,59 @@
-FROM pypy:3.9-slim AS builder
+FROM alpine:3.18 AS builder
+
+# Install build dependencies
+RUN apk add --no-cache \
+    pypy3-dev \
+    gcc \
+    musl-dev \
+    python3-dev \
+    libffi-dev \
+    openssl-dev \
+    && ln -sf /usr/bin/pypy3 /usr/local/bin/python
 
 WORKDIR /app
 
-# Install only essential build dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
 # Set up virtual environment
 ENV VIRTUAL_ENV=/opt/venv
-RUN pypy -m venv $VIRTUAL_ENV
+RUN python -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # Install minimal dependencies first
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir wheel && \
-    # Install numpy and pandas with minimal dependencies
-    pip install --no-cache-dir numpy pandas --no-deps && \
-    # Install other dependencies
-    pip install --no-cache-dir -r requirements.txt
+    # Install core dependencies only
+    pip install --no-cache-dir fastapi==0.104.1 uvicorn==0.24.0 sqlalchemy==2.0.23 && \
+    # Install other dependencies with minimal features
+    pip install --no-cache-dir -r requirements.txt --no-deps
 
 # Start fresh with minimal image
-FROM pypy:3.9-slim
+FROM alpine:3.18
+
+# Install runtime dependencies only
+RUN apk add --no-cache \
+    pypy3 \
+    tzdata \
+    && ln -sf /usr/bin/pypy3 /usr/local/bin/python
 
 WORKDIR /app
 
 # Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+
+# Set environment variables for minimal memory usage
+ENV PYTHONPATH="/app" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONMALLOC=malloc \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONHASHSEED=random \
+    PYTHONOPTIMIZE=2 \
+    MEMORY_LIMIT="48M" \
+    MPLBACKEND=Agg \
+    OMP_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    VECLIB_MAXIMUM_THREADS=1
 
 # Copy application code
 COPY . .
