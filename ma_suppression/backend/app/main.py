@@ -52,22 +52,21 @@ os.makedirs(DB_DIR, exist_ok=True)
 DB_PATH = os.path.join(DB_DIR, "ma_suppression.db")
 # Configure SQLite to use WAL mode for better concurrency and performance
 import sqlite3
-# Configure SQLite engine with optimized settings
-SQLITE_PRAGMA = {
-    "journal_mode": "WAL",
-    "synchronous": "NORMAL",
-    "foreign_keys": "ON",
-    "temp_store": "MEMORY"
-}
+# Configure SQLite URL with query parameters for pragmas
+SQLALCHEMY_DATABASE_URL = (
+    f"sqlite:///{DB_PATH}"
+    "?journal_mode=WAL"
+    "&synchronous=NORMAL"
+    "&foreign_keys=ON"
+    "&temp_store=MEMORY"
+)
 
-SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
     connect_args={
         "check_same_thread": False,
         "timeout": 30,
-        "isolation_level": "DEFERRED",
-        "pragma": SQLITE_PRAGMA
+        "isolation_level": "DEFERRED"
     },
     # Conservative connection pooling
     pool_size=5,
