@@ -47,9 +47,9 @@ ENV PYTHONPATH="/app" \
     OPENBLAS_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
     VECLIB_MAXIMUM_THREADS=1 \
-    MEMORY_LIMIT="96M" \
+    MEMORY_LIMIT="64M" \
     UVICORN_WORKERS=1 \
-    UVICORN_MEMORY_MAX="80" \
+    UVICORN_MEMORY_MAX="48" \
     UVICORN_LOOP="uvloop" \
     UVICORN_HTTP="httptools"
 
@@ -57,6 +57,6 @@ EXPOSE 8000
 
 # Run with strict memory constraints and optimized settings
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", \
-     "--workers", "1", "--limit-memory-hard", "80", "--limit-memory-soft", "64", \
+     "--workers", "1", "--limit-memory-hard", "48", "--limit-memory-soft", "32", \
      "--timeout-keep-alive", "5", "--no-access-log", "--loop", "uvloop", \
      "--http", "httptools"]
