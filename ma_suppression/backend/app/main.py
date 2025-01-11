@@ -27,61 +27,120 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI()
 
 # Initialize scheduler on startup
-@app.on_event("startup")
-async def startup_event():
-    """Initialize scheduler and check database status."""
+import gc
+import asyncio
+from contextlib import asynccontextmanager
+
+# Global initialization flag
+is_initializing = False
+initialization_progress = {"stocks": 0, "scores": 0}
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for FastAPI app."""
+    # Startup
+    print("Starting application...")
+    yield
+    # Shutdown
+    print("Shutting down application...")
+
+app = FastAPI(lifespan=lifespan)
+
+async def init_database():
+    """Initialize database asynchronously with minimal memory usage."""
+    global is_initializing, initialization_progress
+    
+    if is_initializing:
+        return
+        
+    is_initializing = True
     db = SessionLocal()
+    
     try:
+        # Force garbage collection
+        gc.collect()
+        
         # Check database status
         stock_count = db.query(Stock).count()
         scores_count = db.query(SuppressionScore).count()
         print(f"\nDatabase status: {stock_count} stocks, {scores_count} scores")
         
-        # Initialize database if empty (with reduced test data)
+        # Initialize database if empty
         if stock_count == 0:
             print("\nInitializing database with minimal test data...")
             from tests.test_pagination import create_test_data
-            create_test_data(db)
-            print("Test data generation complete.")
             
-            # Calculate initial suppression scores in batches
+            # Create test data in smaller chunks
+            batch_size = 5  # Process 5 stocks at a time
+            try:
+                create_test_data(db, batch_size=batch_size)
+                print("Test data created successfully")
+                await asyncio.sleep(1)  # Allow other tasks to run
+            except Exception as e:
+                print(f"Error creating test data: {e}")
+                return
+            
+            # Update progress
+            stock_count = db.query(Stock).count()
+            initialization_progress["stocks"] = stock_count
+            
+            # Calculate suppression scores in very small batches
             print("\nCalculating suppression scores...")
             suppression_service = SuppressionService(db)
-            batch_size = 10
             stocks = db.query(Stock).all()
             total_stocks = len(stocks)
             
             for i in range(0, total_stocks, batch_size):
-                batch = stocks[i:i + batch_size]
-                for stock in batch:
-                    try:
-                        # Analyze each MA period for this stock
+                try:
+                    # Process a small batch
+                    batch = stocks[i:i + batch_size]
+                    for stock in batch:
                         for period in suppression_service.ma_periods:
-                            result = suppression_service.analyze_stock(stock, period)
-                            if result:
-                                score = SuppressionScore(
-                                    stock_id=stock.id,
-                                    ma_period=int(period),
-                                    score=float(result['score']),
-                                    contacts=int(result['contacts']),
-                                    breakthroughs=int(result['breakthroughs']),
-                                    avg_deviation=float(result['avg_deviation'])
-                                )
-                                db.add(score)
-                        db.commit()
-                    except Exception as e:
-                        print(f"Error analyzing {stock.symbol}: {e}")
-                        db.rollback()
-                print(f"Analyzed {min(i + batch_size, total_stocks)}/{total_stocks} stocks")
+                            try:
+                                result = suppression_service.analyze_stock(stock, period)
+                                if result:
+                                    score = SuppressionScore(
+                                        stock_id=stock.id,
+                                        ma_period=int(period),
+                                        score=float(result['score']),
+                                        contacts=int(result['contacts']),
+                                        breakthroughs=int(result['breakthroughs']),
+                                        avg_deviation=float(result['avg_deviation'])
+                                    )
+                                    db.add(score)
+                            except Exception as e:
+                                print(f"Error analyzing {stock.symbol} MA{period}: {e}")
+                                continue
+                    
+                    # Commit batch and update progress
+                    db.commit()
+                    scores_count = db.query(SuppressionScore).count()
+                    initialization_progress["scores"] = scores_count
+                    print(f"Progress: {i + len(batch)}/{total_stocks} stocks analyzed, {scores_count} scores calculated")
+                    
+                    # Force garbage collection and yield
+                    gc.collect()
+                    await asyncio.sleep(0.1)  # Allow other tasks to run
+                    
+                except Exception as e:
+                    print(f"Error processing batch {i}-{i+batch_size}: {e}")
+                    db.rollback()
+                    continue
         
-        # Set up scheduler for daily updates
+        # Set up scheduler
         setup_scheduler(db)
         print("Scheduler initialized")
+        
     except Exception as e:
-        print(f"Error during startup: {e}")
-        db.rollback()
+        print(f"Error during initialization: {e}")
     finally:
+        is_initializing = False
         db.close()
+
+@app.on_event("startup")
+async def startup_event():
+    """Start database initialization in background."""
+    asyncio.create_task(init_database())
 
 # Configure CORS for frontend
 app.add_middleware(

@@ -11,68 +11,75 @@ import requests
 import time
 import json
 
-def create_test_data(db):
-    """Create synthetic test data."""
+def create_test_data(db, batch_size: int = 5):
+    """Create synthetic test data with minimal memory usage."""
     print("\nCreating test data...")
     
-    # Generate test stocks (50 NASDAQ, 50 Russell 2000 for memory efficiency)
-    stocks = []
+    def create_stock_batch(start: int, count: int, is_nasdaq: bool) -> list:
+        """Create a small batch of stocks."""
+        batch = []
+        for i in range(start, start + count):
+            prefix = "NSDQ" if is_nasdaq else "RUSS"
+            symbol = f"{prefix}{i:04d}"
+            stock = Stock(
+                symbol=symbol,
+                name=f"{'NASDAQ' if is_nasdaq else 'Russell'} Stock {i}",
+                market_cap=random.uniform(1e9, 500e9) if is_nasdaq else random.uniform(0.5e9, 10e9),
+                index_type="NASDAQ" if is_nasdaq else "RUSSELL2000"
+            )
+            batch.append(stock)
+        return batch
     
-    # NASDAQ stocks
-    for i in range(50):
-        symbol = f"NSDQ{i:04d}"
-        stock = Stock(
-            symbol=symbol,
-            name=f"NASDAQ Stock {i}",
-            market_cap=random.uniform(1e9, 500e9),  # 1B to 500B
-            index_type="NASDAQ"
-        )
-        stocks.append(stock)
+    # Generate minimal test data (20 NASDAQ, 30 Russell 2000)
+    total_nasdaq = 20
+    total_russell = 30
     
-    # Russell 2000 stocks
-    for i in range(50):
-        symbol = f"RUSS{i:04d}"
-        stock = Stock(
-            symbol=symbol,
-            name=f"Russell Stock {i}",
-            market_cap=random.uniform(0.5e9, 10e9),  # 500M to 10B
-            index_type="RUSSELL2000"
-        )
-        stocks.append(stock)
-    
-    # Add stocks to database in smaller batches
-    batch_size = 10
-    for i in range(0, len(stocks), batch_size):
-        batch = stocks[i:i+batch_size]
+    # Process NASDAQ stocks in small batches
+    for i in range(0, total_nasdaq, batch_size):
+        batch_count = min(batch_size, total_nasdaq - i)
+        batch = create_stock_batch(i, batch_count, True)
         db.add_all(batch)
         db.commit()
-        print(f"Added stocks {i+1}-{i+len(batch)}")
+        print(f"Added NASDAQ stocks {i+1}-{i+batch_count}")
     
-    # Generate price data with batch processing (1 year of data is enough for MA60)
+    # Process Russell 2000 stocks in small batches
+    for i in range(0, total_russell, batch_size):
+        batch_count = min(batch_size, total_russell - i)
+        batch = create_stock_batch(i, batch_count, False)
+        db.add_all(batch)
+        db.commit()
+        print(f"Added Russell stocks {i+1}-{i+batch_count}")
+    
+    print(f"Created {total_nasdaq} NASDAQ and {total_russell} Russell 2000 stocks")
+    
+    # Generate price data with batch processing (180 days is enough for MA60)
     # Use explicit historical dates to avoid future dates
     end_date = datetime(2023, 12, 31)  # End at last year
-    start_date = end_date - timedelta(days=365)  # 1 year of data
-    dates = [start_date + timedelta(days=x) for x in range(365) if (start_date + timedelta(days=x)) <= end_date]
+    start_date = end_date - timedelta(days=180)  # 180 days is enough for MA60
+    dates = [start_date + timedelta(days=x) for x in range(180) if (start_date + timedelta(days=x)) <= end_date]
     
     print("\nGenerating price data...")
+    # Get all stocks from database
+    stocks = db.query(Stock).all()
     total_stocks = len(stocks)
-    batch_size = 50  # Process 50 stocks at a time
+    price_batch_size = 5  # Process 5 stocks at a time for lower memory usage
     
-    for batch_start in range(0, total_stocks, batch_size):
-        batch_end = min(batch_start + batch_size, total_stocks)
+    for batch_start in range(0, total_stocks, price_batch_size):
+        batch_end = min(batch_start + price_batch_size, total_stocks)
         stock_batch = stocks[batch_start:batch_end]
-        all_prices = []
         
         for stock in stock_batch:
+            # Generate prices for one stock at a time
             base_price = random.uniform(10, 1000)
             current_price = base_price
+            stock_prices = []
             
             for date in dates:
                 # Generate realistic price movement
                 daily_change = random.uniform(-0.03, 0.03)
                 current_price *= (1 + daily_change)
                 
-                all_prices.append(
+                stock_prices.append(
                     StockPrice(
                         stock_id=stock.id,
                         date=date,
@@ -82,23 +89,27 @@ def create_test_data(db):
                         close=current_price
                     )
                 )
-        
-        # Bulk insert all prices for this batch
-        db.add_all(all_prices)
-        db.commit()
-        print(f"Progress: {batch_end}/{total_stocks} stocks processed ({len(all_prices)} price points)")
+            
+            # Insert prices for this stock
+            db.add_all(stock_prices)
+            db.commit()
+            print(f"Added {len(stock_prices)} prices for {stock.symbol}")
     
     print("\nGenerating suppression scores...")
     ma_periods = [10, 20, 30, 40, 50, 60]  # Limited to MA10-MA60 range
-    batch_size = 5  # Process 5 stocks at a time to reduce memory usage
+    score_batch_size = 5  # Process 5 stocks at a time to reduce memory usage
     
-    for batch_start in range(0, total_stocks, batch_size):
+    # Get fresh list of stocks
+    stocks = db.query(Stock).all()
+    total_stocks = len(stocks)
+    
+    for batch_start in range(0, total_stocks, score_batch_size):
         try:
-            batch_end = min(batch_start + batch_size, total_stocks)
+            batch_end = min(batch_start + score_batch_size, total_stocks)
             stock_batch = stocks[batch_start:batch_end]
-            scores = []
             
             for stock in stock_batch:
+                stock_scores = []
                 for period in ma_periods:
                     # Generate realistic scores based on MA period
                     # Shorter periods tend to have more contacts and breakthroughs
@@ -114,12 +125,14 @@ def create_test_data(db):
                         breakthroughs=breakthroughs,
                         avg_deviation=avg_deviation
                     )
-                    scores.append(score)
+                    stock_scores.append(score)
+                
+                # Insert scores for this stock
+                db.add_all(stock_scores)
+                db.commit()
+                print(f"Added {len(stock_scores)} scores for {stock.symbol}")
             
-            # Bulk insert scores for this batch
-            db.add_all(scores)
-            db.commit()
-            print(f"Progress: {batch_end}/{total_stocks} stocks processed ({len(scores)} scores)")
+            print(f"Processed stocks {batch_start+1}-{batch_end} of {total_stocks}")
             
         except Exception as e:
             print(f"Error processing batch {batch_start}-{batch_end}: {e}")
