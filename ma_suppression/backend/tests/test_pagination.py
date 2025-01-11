@@ -123,6 +123,13 @@ def test_pagination():
             create_test_data(db)
         else:
             print(f"\nUsing existing data ({stock_count} stocks)")
+            
+        # Ensure suppression scores are calculated
+        from app.services.suppression_service import SuppressionService
+        print("\nCalculating suppression scores...")
+        suppression_service = SuppressionService(db)
+        suppression_service.analyze_all_stocks()
+        print("Suppression analysis complete.")
         
         # Test pagination endpoints
         base_url = "http://localhost:8000/api/stocks"

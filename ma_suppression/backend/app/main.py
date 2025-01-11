@@ -89,7 +89,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:4173",
         "http://localhost:5173",
-        "http://localhost:3000"
+        "http://localhost:3000",
+        "https://moving-average-analysis-app-k51ft6e1.devinapps.com"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -172,39 +173,54 @@ async def get_historical_data(
             symbol, days_str, period = key.split('_')
             days_needed = int(days_str) + int(period)
             
-            # Use raw SQL for moving average calculation
+            # Use raw SQL for moving average calculation with better date handling
             ma_sql = text(f"""
-                WITH numbered_prices AS (
-                    SELECT date, close,
-                           ROW_NUMBER() OVER (ORDER BY date DESC) as row_num
+                WITH RECURSIVE dates AS (
+                    SELECT date
                     FROM stock_prices
                     WHERE stock_id = :stock_id
+                    ORDER BY date DESC
+                    LIMIT :days_needed
                 ),
-                prices_with_ma AS (
-                    SELECT p1.date, p1.close,
-                           AVG(p2.close) as ma
-                    FROM numbered_prices p1
-                    LEFT JOIN numbered_prices p2
-                    ON p2.date <= p1.date
-                    AND p2.date > date(p1.date, '-{best_ma.ma_period} days')
-                    WHERE p1.row_num <= :days_needed
+                prices AS (
+                    SELECT sp.date, sp.close
+                    FROM stock_prices sp
+                    JOIN dates d ON sp.date = d.date
+                    WHERE sp.stock_id = :stock_id
+                ),
+                ma_calc AS (
+                    SELECT 
+                        p1.date,
+                        p1.close,
+                        ROUND(AVG(p2.close), 4) as ma
+                    FROM prices p1
+                    LEFT JOIN prices p2 ON 
+                        p2.date <= p1.date AND 
+                        p2.date > date(p1.date, '-' || :ma_period || ' days')
                     GROUP BY p1.date, p1.close
                 )
-                SELECT date, close, ROUND(ma, 4) as ma
-                FROM prices_with_ma
+                SELECT 
+                    strftime('%Y-%m-%dT%H:%M:%SZ', date) as date,
+                    ROUND(close, 4) as close,
+                    COALESCE(ma, NULL) as ma
+                FROM ma_calc
                 ORDER BY date DESC
             """)
             
             prices_with_ma = db.execute(
                 ma_sql,
-                {"stock_id": stock.id, "days_needed": days_needed}
+                {
+                    "stock_id": stock.id,
+                    "days_needed": days_needed,
+                    "ma_period": best_ma.ma_period
+                }
             ).all()
             
             return [
                 {
                     'date': price.date,
-                    'price': price.close,
-                    'ma': round(price.ma, 4) if price.ma is not None else None
+                    'price': float(price.close),
+                    'ma': float(price.ma) if price.ma is not None else None
                 }
                 for price in prices_with_ma
             ]
