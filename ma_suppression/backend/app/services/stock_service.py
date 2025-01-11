@@ -383,6 +383,11 @@ class StockService:
                 fast_info = stock.fast_info
                 info = stock.info
                 
+                # Download recent historical data with valid period
+                data = stock.history(period='1mo')  # Use 1 month of data for basic info
+                if data.empty:
+                    return None
+                
                 # Try different ways to get market cap
                 market_cap = (
                     getattr(fast_info, 'market_cap', None) or
@@ -419,9 +424,36 @@ class StockService:
         print(f"Failed to fetch info for {symbol} after {max_retries} attempts")
         return None
     
-    def fetch_daily_data(self, symbol: str, start_date: datetime) -> pd.DataFrame:
+    def fetch_daily_data(self, symbol: str, start_date: Optional[datetime] = None) -> pd.DataFrame:
         """Fetch daily OHLC data for a stock."""
         try:
+            # Default to '6mo' period for sufficient historical data
+            period = '6mo'
+            if start_date:
+                # If start_date is provided, calculate period dynamically
+                days_diff = (datetime.now() - start_date).days
+                if days_diff <= 5:
+                    period = '5d'
+                elif days_diff <= 30:
+                    period = '1mo'
+                elif days_diff <= 90:
+                    period = '3mo'
+                elif days_diff <= 180:
+                    period = '6mo'
+                else:
+                    period = 'max'
+                    
+            # Download data using valid period
+            stock = yf.Ticker(symbol)
+            data = stock.history(period=period)
+            if data.empty:
+                print(f"No data available for {symbol} with period {period}")
+                return pd.DataFrame()
+                
+            return data
+            # Default to 2 years of data for MA200 calculations
+            if start_date is None:
+                start_date = datetime.now() - timedelta(days=730)
             # Clean symbol - remove spaces and special characters
             clean_symbol = symbol.strip().replace(' ', '')
             stock = yf.Ticker(clean_symbol)
