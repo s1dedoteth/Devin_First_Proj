@@ -11,12 +11,12 @@ import requests
 import time
 import json
 
-def create_test_data(db, batch_size: int = 5):
-    """Create synthetic test data with minimal memory usage."""
+def create_test_data(db, batch_size: int = 2):
+    """Create synthetic test data with absolute minimal memory usage."""
     print("\nCreating test data...")
     
     def create_stock_batch(start: int, count: int, is_nasdaq: bool) -> list:
-        """Create a small batch of stocks."""
+        """Create a tiny batch of stocks."""
         batch = []
         for i in range(start, start + count):
             prefix = "NSDQ" if is_nasdaq else "RUSS"
@@ -30,9 +30,9 @@ def create_test_data(db, batch_size: int = 5):
             batch.append(stock)
         return batch
     
-    # Generate minimal test data (20 NASDAQ, 30 Russell 2000)
-    total_nasdaq = 20
-    total_russell = 30
+    # Generate absolute minimal test data (5 NASDAQ, 5 Russell 2000)
+    total_nasdaq = 5
+    total_russell = 5
     
     # Process NASDAQ stocks in small batches
     for i in range(0, total_nasdaq, batch_size):

@@ -175,7 +175,7 @@ async def healthz(db: Session = Depends(get_db)):
         scores_count = db.query(SuppressionScore).count()
         
         # Calculate expected counts
-        expected_stocks = 500  # Reduced test data size
+        expected_stocks = 10  # Minimal test data size (5 NASDAQ + 5 Russell)
         expected_scores = expected_stocks * len(SuppressionService(db).ma_periods)
         
         # Check if both stocks and scores are fully populated
