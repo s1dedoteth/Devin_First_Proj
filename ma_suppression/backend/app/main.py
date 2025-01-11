@@ -52,18 +52,13 @@ os.makedirs(DB_DIR, exist_ok=True)
 DB_PATH = os.path.join(DB_DIR, "ma_suppression.db")
 # Configure SQLite to use WAL mode for better concurrency and performance
 import sqlite3
-def setup_sqlite_wal():
-    """Configure SQLite connection to use WAL mode."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute('PRAGMA journal_mode=WAL')
-    conn.execute('PRAGMA synchronous=OFF')  # Disable synchronous writes for better performance
-    conn.execute('PRAGMA cache_size=-2000')  # 2MB cache
-    conn.execute('PRAGMA mmap_size=8388608')  # 8MB mmap
-    conn.execute('PRAGMA temp_store=MEMORY')  # Store temp tables in memory
-    conn.execute('PRAGMA page_size=4096')  # Smaller page size
-    conn.close()
-
-setup_sqlite_wal()
+# Configure SQLite engine with optimized settings
+SQLITE_PRAGMA = {
+    "journal_mode": "WAL",
+    "synchronous": "NORMAL",
+    "foreign_keys": "ON",
+    "temp_store": "MEMORY"
+}
 
 SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
 engine = create_engine(
@@ -71,11 +66,12 @@ engine = create_engine(
     connect_args={
         "check_same_thread": False,
         "timeout": 30,
-        "isolation_level": "READ UNCOMMITTED"
+        "isolation_level": "DEFERRED",
+        "pragma": SQLITE_PRAGMA
     },
-    # Aggressive connection pooling
-    pool_size=1,
-    max_overflow=0,
+    # Conservative connection pooling
+    pool_size=5,
+    max_overflow=10,
     pool_timeout=30,
     pool_recycle=1800
 )
@@ -130,12 +126,8 @@ async def init_database():
         
         db = SessionLocal()
         try:
-            # Configure SQLite for minimal memory usage
-            db.execute(text("PRAGMA cache_size = -2000"))  # 2MB cache
-            db.execute(text("PRAGMA temp_store = MEMORY"))
-            db.execute(text("PRAGMA journal_mode = MEMORY"))
-            db.execute(text("PRAGMA synchronous = OFF"))
-            db.execute(text("PRAGMA page_size = 4096"))
+            # Use engine-level SQLite configuration
+            db.execute(text("PRAGMA foreign_keys = ON"))
             
             # Check database status with raw SQL for minimal memory usage
             stock_count = db.execute(text("SELECT COUNT(*) FROM stocks")).scalar()
