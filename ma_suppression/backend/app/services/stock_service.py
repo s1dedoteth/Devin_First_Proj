@@ -1,13 +1,14 @@
 import yfinance as yf
 import pandas as pd
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional
 import numpy as np
 from ..models import Stock, StockPrice
 import time
 import requests
 import io
+import pytz
 
 class StockService:
     def __init__(self, db: Session):
@@ -376,6 +377,13 @@ class StockService:
         # Clean symbol - remove spaces and special characters
         clean_symbol = symbol.strip().replace(' ', '')
         
+        # Use explicit historical date range (previous year)
+        today = datetime.now()
+        end_year = today.year - 1  # Use previous year's data
+        end_str = f'{end_year}-12-31'
+        start_str = f'{end_year}-01-01'
+        print(f"Fetching historical data for {symbol} from {start_str} to {end_str}")
+        
         for attempt in range(max_retries):
             try:
                 stock = yf.Ticker(clean_symbol)
@@ -383,9 +391,26 @@ class StockService:
                 fast_info = stock.fast_info
                 info = stock.info
                 
-                # Download recent historical data with valid period (1 year for MA calculations)
-                data = stock.history(period='1y')  # Fetch 1 year of data for proper MA analysis
+                # Download historical data with string dates
+                print(f"Fetching {symbol} data from {start_str} to {end_str}")
+                data = stock.history(start=start_str, end=end_str)
                 if data.empty:
+                    print(f"No data returned for {symbol}")
+                    return None
+                
+                # Handle timezone-aware comparison
+                try:
+                    # Convert to NY timezone for consistency
+                    data.index = pd.to_datetime(data.index).tz_localize('UTC').tz_convert('America/New_York')
+                    
+                    # Verify data range
+                    if not data.empty:
+                        print(f"Got data for {symbol}: {data.index.min()} to {data.index.max()}")
+                    else:
+                        print(f"Empty data after timezone conversion for {symbol}")
+                        return None
+                except Exception as e:
+                    print(f"Error handling dates for {symbol}: {e}")
                     return None
                 
                 # Try different ways to get market cap
@@ -408,7 +433,8 @@ class StockService:
                     'symbol': symbol,
                     'name': name,
                     'market_cap': market_cap,
-                    'index_type': index_type
+                    'index_type': index_type,
+                    'last_updated': end_date.isoformat()
                 }
             except requests.exceptions.RequestException as e:
                 print(f"Network error fetching info for {symbol} (attempt {attempt + 1}): {e}")
