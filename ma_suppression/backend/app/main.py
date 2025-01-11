@@ -37,12 +37,49 @@ async def startup_event():
         scores_count = db.query(SuppressionScore).count()
         print(f"\nDatabase status: {stock_count} stocks, {scores_count} scores")
         
+        # Initialize database if empty (with reduced test data)
+        if stock_count == 0:
+            print("\nInitializing database with minimal test data...")
+            from tests.test_pagination import create_test_data
+            create_test_data(db)
+            print("Test data generation complete.")
+            
+            # Calculate initial suppression scores in batches
+            print("\nCalculating suppression scores...")
+            suppression_service = SuppressionService(db)
+            batch_size = 10
+            stocks = db.query(Stock).all()
+            total_stocks = len(stocks)
+            
+            for i in range(0, total_stocks, batch_size):
+                batch = stocks[i:i + batch_size]
+                for stock in batch:
+                    try:
+                        # Analyze each MA period for this stock
+                        for period in suppression_service.ma_periods:
+                            result = suppression_service.analyze_stock(stock, period)
+                            if result:
+                                score = SuppressionScore(
+                                    stock_id=stock.id,
+                                    ma_period=int(period),
+                                    score=float(result['score']),
+                                    contacts=int(result['contacts']),
+                                    breakthroughs=int(result['breakthroughs']),
+                                    avg_deviation=float(result['avg_deviation'])
+                                )
+                                db.add(score)
+                        db.commit()
+                    except Exception as e:
+                        print(f"Error analyzing {stock.symbol}: {e}")
+                        db.rollback()
+                print(f"Analyzed {min(i + batch_size, total_stocks)}/{total_stocks} stocks")
+        
         # Set up scheduler for daily updates
         setup_scheduler(db)
         print("Scheduler initialized")
     except Exception as e:
         print(f"Error during startup: {e}")
-        raise  # Re-raise to ensure we see the error
+        db.rollback()
     finally:
         db.close()
 

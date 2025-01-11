@@ -35,10 +35,12 @@ ENV PORT="8000" \
     PYTHONPATH="/app" \
     PYTHONUNBUFFERED=1 \
     WORKERS_PER_CORE="1" \
-    MAX_WORKERS="4"
+    MAX_WORKERS="1" \
+    WEB_CONCURRENCY="1" \
+    MEMORY_LIMIT="256M"
 
 # Expose port
 EXPOSE 8000
 
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application with memory constraints
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--limit-memory-hard", "256"]
