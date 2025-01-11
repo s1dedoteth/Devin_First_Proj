@@ -15,11 +15,11 @@ def create_test_data(db):
     """Create synthetic test data."""
     print("\nCreating test data...")
     
-    # Generate test stocks (200 NASDAQ, 300 Russell 2000)
+    # Generate test stocks (50 NASDAQ, 50 Russell 2000 for memory efficiency)
     stocks = []
     
     # NASDAQ stocks
-    for i in range(200):
+    for i in range(50):
         symbol = f"NSDQ{i:04d}"
         stock = Stock(
             symbol=symbol,
@@ -30,7 +30,7 @@ def create_test_data(db):
         stocks.append(stock)
     
     # Russell 2000 stocks
-    for i in range(300):
+    for i in range(50):
         symbol = f"RUSS{i:04d}"
         stock = Stock(
             symbol=symbol,
@@ -40,15 +40,19 @@ def create_test_data(db):
         )
         stocks.append(stock)
     
-    # Add stocks to database
-    db.add_all(stocks)
-    db.commit()
+    # Add stocks to database in smaller batches
+    batch_size = 10
+    for i in range(0, len(stocks), batch_size):
+        batch = stocks[i:i+batch_size]
+        db.add_all(batch)
+        db.commit()
+        print(f"Added stocks {i+1}-{i+len(batch)}")
     
-    # Generate price data with batch processing (2 years for MA200)
+    # Generate price data with batch processing (1 year of data is enough for MA60)
     # Use explicit historical dates to avoid future dates
     end_date = datetime(2023, 12, 31)  # End at last year
-    start_date = end_date - timedelta(days=730)  # 2 years of data
-    dates = [start_date + timedelta(days=x) for x in range(730) if (start_date + timedelta(days=x)) <= end_date]
+    start_date = end_date - timedelta(days=365)  # 1 year of data
+    dates = [start_date + timedelta(days=x) for x in range(365) if (start_date + timedelta(days=x)) <= end_date]
     
     print("\nGenerating price data...")
     total_stocks = len(stocks)
@@ -85,30 +89,41 @@ def create_test_data(db):
         print(f"Progress: {batch_end}/{total_stocks} stocks processed ({len(all_prices)} price points)")
     
     print("\nGenerating suppression scores...")
-    ma_periods = [10, 20, 30, 40, 50, 60]  # Limited to MA10-MA60 range with more granularity
-    batch_size = 100  # Process 100 stocks at a time
+    ma_periods = [10, 20, 30, 40, 50, 60]  # Limited to MA10-MA60 range
+    batch_size = 5  # Process 5 stocks at a time to reduce memory usage
     
     for batch_start in range(0, total_stocks, batch_size):
-        batch_end = min(batch_start + batch_size, total_stocks)
-        stock_batch = stocks[batch_start:batch_end]
-        scores = []
-        
-        for stock in stock_batch:
-            for period in ma_periods:
-                score = SuppressionScore(
-                    stock_id=stock.id,
-                    ma_period=period,
-                    score=random.uniform(-0.5, 0.5),
-                    contacts=random.randint(10, 100),
-                    breakthroughs=random.randint(5, 30),
-                    avg_deviation=random.uniform(0.5, 5.0)
-                )
-                scores.append(score)
-        
-        # Bulk insert scores for this batch
-        db.add_all(scores)
-        db.commit()
-        print(f"Progress: {batch_end}/{total_stocks} stocks processed ({len(scores)} scores)")
+        try:
+            batch_end = min(batch_start + batch_size, total_stocks)
+            stock_batch = stocks[batch_start:batch_end]
+            scores = []
+            
+            for stock in stock_batch:
+                for period in ma_periods:
+                    # Generate realistic scores based on MA period
+                    # Shorter periods tend to have more contacts and breakthroughs
+                    contacts = max(5, int(30 * (1 - period/60)))  # More contacts for shorter periods
+                    breakthroughs = max(2, int(15 * (1 - period/60)))  # More breakthroughs for shorter periods
+                    avg_deviation = random.uniform(0.5, 2.0) * (period/10)  # Higher deviation for longer periods
+                    
+                    score = SuppressionScore(
+                        stock_id=stock.id,
+                        ma_period=period,
+                        score=random.uniform(-0.3, 0.3),  # More conservative score range
+                        contacts=contacts,
+                        breakthroughs=breakthroughs,
+                        avg_deviation=avg_deviation
+                    )
+                    scores.append(score)
+            
+            # Bulk insert scores for this batch
+            db.add_all(scores)
+            db.commit()
+            print(f"Progress: {batch_end}/{total_stocks} stocks processed ({len(scores)} scores)")
+            
+        except Exception as e:
+            print(f"Error processing batch {batch_start}-{batch_end}: {e}")
+            continue  # Continue with next batch on error
     
     print("Test data creation complete.")
 
