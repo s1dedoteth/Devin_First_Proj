@@ -32,57 +32,24 @@ async def startup_event():
         # Check if database is empty
         stock_count = db.query(Stock).count()
         if stock_count == 0:
-            # Check if test data is allowed first
-            allow_test_data = os.getenv('ALLOW_TEST_DATA', '').lower()
-            print(f"ALLOW_TEST_DATA environment variable: '{allow_test_data}'")
-            if allow_test_data == 'true':
-                print("Generating test data...")
-                from tests.test_pagination import create_test_data
-                create_test_data(db)
-                print("Test data generation complete.")
-                
-                suppression_service = SuppressionService(db)
-                suppression_service.analyze_all_stocks()
-                print("Suppression analysis complete.")
-            else:
-                print("Database is empty. Fetching real stock data...")
-                stock_service = StockService(db)
-                
-                # Fetch real stock data
-                try:
-                    print("Fetching stock symbols...")
-                    stocks = stock_service.fetch_index_constituents()
-                    print(f"Found {len(stocks)} stocks. Fetching details...")
-                    
-                    for stock_info in stocks:
-                        try:
-                            details = stock_service.get_stock_info(
-                                stock_info['symbol'],
-                                stock_info['index_type']
-                            )
-                            if details:
-                                stock = Stock(**details)
-                                db.add(stock)
-                                db.commit()
-                                print(f"Added {stock.symbol}")
-                        except Exception as e:
-                            print(f"Error adding {stock_info['symbol']}: {e}")
-                            continue
-                    
-                    print("Stock data fetching complete.")
-                    
-                    # Initialize suppression analysis
-                    suppression_service = SuppressionService(db)
-                    suppression_service.analyze_all_stocks()
-                    print("Suppression analysis complete.")
-                except Exception as e:
-                    print(f"Error during stock data fetching: {e}")
-                    raise  # Re-raise the exception since we don't have a fallback
+            print("\nInitializing database with test data...")
+            # Always use test data in production for now
+            from tests.test_pagination import create_test_data
+            create_test_data(db)
+            print("Test data generation complete.")
+            
+            # Calculate initial suppression scores
+            suppression_service = SuppressionService(db)
+            suppression_service.analyze_all_stocks()
+            print("Suppression analysis complete.")
+        else:
+            print(f"Database already contains {stock_count} stocks")
         
         # Set up scheduler for daily updates
         setup_scheduler(db)
     except Exception as e:
         print(f"Error during startup: {e}")
+        raise  # Re-raise to ensure we see the error
     finally:
         db.close()
 
