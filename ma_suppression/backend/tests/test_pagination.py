@@ -1,12 +1,13 @@
 import sys
 import os
 import random
+import gc
 from datetime import datetime, timedelta
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.main import engine, SessionLocal
 from app.models import Base, Stock, StockPrice, SuppressionScore
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 import requests
 import time
 import json
@@ -30,33 +31,41 @@ def create_test_data(db, batch_size: int = 2):
             batch.append(stock)
         return batch
     
-    # Generate absolute minimal test data (2 NASDAQ, 2 Russell 2000)
-    total_nasdaq = 2
-    total_russell = 2
+    # Generate absolute minimal test data (1 stock per index)
+    total_stocks = 2  # 1 NASDAQ, 1 Russell 2000
     
-    # Process NASDAQ stocks in small batches
-    for i in range(0, total_nasdaq, batch_size):
-        batch_count = min(batch_size, total_nasdaq - i)
-        batch = create_stock_batch(i, batch_count, True)
-        db.add_all(batch)
-        db.commit()
-        print(f"Added NASDAQ stocks {i+1}-{i+batch_count}")
+    # Add one NASDAQ stock
+    stock = Stock(
+        symbol="NSDQ0001",
+        name="NASDAQ Test Stock",
+        market_cap=random.uniform(1e9, 500e9),
+        index_type="NASDAQ"
+    )
+    db.add(stock)
+    db.commit()
+    print("Added NASDAQ test stock")
+    gc.collect()  # Force garbage collection
     
-    # Process Russell 2000 stocks in small batches
-    for i in range(0, total_russell, batch_size):
-        batch_count = min(batch_size, total_russell - i)
-        batch = create_stock_batch(i, batch_count, False)
-        db.add_all(batch)
-        db.commit()
-        print(f"Added Russell stocks {i+1}-{i+batch_count}")
+    # Add one Russell 2000 stock
+    stock = Stock(
+        symbol="RUSS0001",
+        name="Russell Test Stock",
+        market_cap=random.uniform(0.5e9, 10e9),
+        index_type="RUSSELL2000"
+    )
+    db.add(stock)
+    db.commit()
+    print("Added Russell test stock")
+    gc.collect()  # Force garbage collection
     
-    print(f"Created {total_nasdaq} NASDAQ and {total_russell} Russell 2000 stocks")
+    print("Created test stocks (1 NASDAQ, 1 Russell 2000)")
     
-    # Generate price data with batch processing (180 days is enough for MA60)
+    # Generate minimal price data (90 days is enough for MA60)
     # Use explicit historical dates to avoid future dates
     end_date = datetime(2023, 12, 31)  # End at last year
-    start_date = end_date - timedelta(days=180)  # 180 days is enough for MA60
-    dates = [start_date + timedelta(days=x) for x in range(180) if (start_date + timedelta(days=x)) <= end_date]
+    start_date = end_date - timedelta(days=90)  # 90 days is enough for MA60
+    dates = [start_date + timedelta(days=x) for x in range(90) if (start_date + timedelta(days=x)) <= end_date]
+    gc.collect()  # Force garbage collection before price generation
     
     print("\nGenerating price data...")
     # Get all stocks from database
