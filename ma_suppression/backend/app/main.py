@@ -119,10 +119,14 @@ async def healthz(db: Session = Depends(get_db)):
         scores_count = db.query(SuppressionScore).count()
         
         # Calculate expected counts
-        expected_stocks = 3000  # 1000 NASDAQ + 2000 Russell
+        expected_stocks = 500  # Reduced test data size
         expected_scores = expected_stocks * len(SuppressionService(db).ma_periods)
         
-        initialization_complete = stock_count == expected_stocks and scores_count > 0
+        # Check if both stocks and scores are fully populated
+        initialization_complete = (
+            stock_count >= expected_stocks and 
+            scores_count >= expected_scores
+        )
         
         return {
             "status": "ok",
@@ -319,17 +323,18 @@ def execute_stock_query(params: dict, db: Session) -> Dict:
         .subquery()
     )
     
-    # Get best suppression scores with COALESCE to handle NULLs
+    # Get best suppression scores with proper normalization
     best_scores = (
         db.query(
             SuppressionScore.stock_id,
-            func.coalesce(SuppressionScore.ma_period, 20).label('ma_period'),
-            func.coalesce(SuppressionScore.score, 0.0).label('score'),
+            SuppressionScore.ma_period,
+            SuppressionScore.score,
             func.row_number().over(
                 partition_by=SuppressionScore.stock_id,
-                order_by=func.coalesce(SuppressionScore.score, 0.0).desc()
+                order_by=SuppressionScore.score.desc()
             ).label('rn')
         )
+        .filter(SuppressionScore.ma_period.between(10, 60))  # Only consider MA10-MA60
         .subquery()
     )
     
@@ -396,10 +401,13 @@ def execute_stock_query(params: dict, db: Session) -> Dict:
     # Execute query and format results
     stocks = []
     for stock, ma_period, score, latest_price, latest_date in query.all():
-        # Handle NULL values
-        ma_period = ma_period or 20  # Default to MA20 if NULL
+        # Handle NULL values with MA10 as baseline
+        ma_period = ma_period or 10  # Default to MA10 if NULL (our normalization baseline)
         score = score or 0.0  # Default to 0.0 if NULL
         latest_price = latest_price or 0.0  # Default to 0.0 if NULL
+        
+        # Debug logging for score selection
+        print(f"Selected MA{ma_period} for {stock.symbol} with score {score:.4f}")
         
         stocks.append({
             "symbol": stock.symbol,

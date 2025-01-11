@@ -2,351 +2,126 @@ import yfinance as yf
 import pandas as pd
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 import numpy as np
 from ..models import Stock, StockPrice
 import time
-import requests
+import aiohttp
+import asyncio
 import io
 import pytz
+import requests  # For fallback HTTP requests
+from .cache_service import cache_service
+
+# Type alias for async/sync function results
+StockList = Union[List[str], asyncio.Future[List[str]]]
 
 class StockService:
     def __init__(self, db: Session):
         self.db = db
         
-    def fetch_full_nasdaq_symbols(self) -> List[str]:
-        """Fetch complete list of NASDAQ stocks using multiple sources."""
+    @cache_service.cache_method("nasdaq_symbols", ttl_memory=3600, ttl_disk=86400)
+    async def fetch_full_nasdaq_symbols(self) -> List[str]:
+        """Fetch complete list of NASDAQ stocks using yfinance with caching."""
         try:
-            # Try Finviz first (most comprehensive)
-            stocks = self._fetch_nasdaq_from_finviz()
-            if len(stocks) > 1000:  # Reasonable minimum for NASDAQ
+            # Use QQQ (NASDAQ-100 ETF) to get NASDAQ stocks
+            loop = asyncio.get_event_loop()
+            qqq = await loop.run_in_executor(None, yf.Ticker, "QQQ")
+            info = await loop.run_in_executor(None, lambda: qqq.info)
+            
+            if 'holdings' in info:
+                stocks = [h['symbol'] for h in info['holdings'] if 'symbol' in h]
+                stocks = [s for s in stocks if s.isalpha()]
+                print(f"Found {len(stocks)} NASDAQ stocks from QQQ")
                 return stocks
                 
-            # Try NASDAQ Trader
-            stocks = self._fetch_nasdaq_from_trader()
-            if len(stocks) > 1000:
-                return stocks
-                
-            # Try QQQ holdings
-            stocks = self._fetch_nasdaq_from_qqq()
-            if len(stocks) > 100:  # QQQ usually has top holdings
-                return stocks
-                
-            # Final fallback to static list
+            # Fallback to static list if QQQ fails
             return self._fetch_nasdaq_from_static()
             
         except Exception as e:
             print(f"Error in fetch_full_nasdaq_symbols: {e}")
             return self._fetch_nasdaq_from_static()
             
-    def _fetch_nasdaq_from_finviz(self) -> List[str]:
-        """Fetch NASDAQ stocks from Finviz."""
-        try:
-            stocks = []
-            base_url = "https://finviz.com/screener.ashx"
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-            
-            # Fetch first page to get total count
-            params = {
-                'v': '111',
-                'f': 'exch_nasd',  # NASDAQ filter
-                'r': '1',
-                'o': '-marketcap'  # Sort by market cap descending
-            }
-            
-            print(f"Fetching NASDAQ stocks from Finviz with params: {params}")
-            response = requests.get(base_url, params=params, headers=headers)
-            response.raise_for_status()
-            
-            # Use pandas to parse HTML tables with better error handling
-            tables = pd.read_html(io.StringIO(response.text))
-            if not tables:
-                raise ValueError("No tables found in response")
-                
-            # Find the table with stock data (usually the last one)
-            stock_table = None
-            for table in reversed(tables):
-                if len(table.columns) >= 2 and 'Ticker' in table.columns:
-                    stock_table = table
-                    break
-                    
-            if stock_table is None:
-                raise ValueError("Could not find stock table")
-                
-            # Extract tickers
-            tickers = stock_table['Ticker'].tolist()
-            stocks.extend([str(t).strip() for t in tickers if pd.notna(t)])
-            
-            # Use fixed large number of pages to ensure we get all stocks
-            total_pages = 150  # 150 pages * 20 stocks = 3000 stocks (more than enough)
-            print(f"Using fixed {total_pages} pages to fetch NASDAQ stocks")
-            
-            # Fetch remaining pages
-            for page in range(2, total_pages + 1):
-                try:
-                    params['r'] = str(1 + (page-1)*20)
-                    print(f"Fetching NASDAQ page {page} with offset {params['r']}")
-                    response = requests.get(base_url, params=params, headers=headers)
-                    response.raise_for_status()
-                    
-                    tables = pd.read_html(io.StringIO(response.text))
-                    stock_table = None
-                    for table in reversed(tables):
-                        if len(table.columns) >= 2 and any(col in table.columns for col in ['Ticker', 'Symbol', 'No.']):
-                            stock_table = table
-                            break
-                            
-                    if stock_table is not None:
-                        ticker_col = next(col for col in stock_table.columns if col in ['Ticker', 'Symbol'])
-                        tickers = stock_table[ticker_col].tolist()
-                        stocks.extend([str(t).strip() for t in tickers if pd.notna(t)])
-                        print(f"Found {len(stocks)} NASDAQ stocks so far...")
-                    
-                    # Rate limiting with progress update
-                    time.sleep(0.5)
-                    
-                except Exception as e:
-                    print(f"Error fetching page {page}: {e}")
-                    continue
-            
-            # Clean and deduplicate
-            stocks = list(set([s for s in stocks if s.isalpha()]))
-            print(f"Found {len(stocks)} NASDAQ stocks from Finviz")
-            return stocks
-            
-        except Exception as e:
-            print(f"Error fetching from Finviz: {e}")
-            return []
-            
-    def _fetch_nasdaq_from_trader(self) -> List[str]:
-        """Fetch NASDAQ stocks from NASDAQ Trader."""
-        try:
-            url = "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqtraded.txt"
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-            
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-            
-            content = '\n'.join(response.text.split('\n')[1:-1])  # Skip header and footer
-            df = pd.read_csv(io.StringIO(content), delimiter='|')
-            
-            stocks = df[
-                (df['Category'].isin(['Q', 'G', 'N'])) &  # Include all NASDAQ categories
-                (df['Test Issue'] == 'N') &  # Not a test issue
-                (df['Financial Status'].isin(['N', 'D', 'E', 'Q']))  # Include all valid statuses
-            ]['Symbol'].tolist()
-            
-            stocks = [s.strip().split()[0] for s in stocks if isinstance(s, str)]
-            stocks = [s for s in stocks if s.isalpha()]
-            
-            print(f"Found {len(stocks)} NASDAQ stocks from NASDAQ Trader")
-            return stocks
-            
-        except Exception as e:
-            print(f"Error fetching from NASDAQ Trader: {e}")
-            return []
-            
-    def _fetch_nasdaq_from_qqq(self) -> List[str]:
-        """Fetch NASDAQ stocks from QQQ holdings."""
-        try:
-            url = "https://www.invesco.com/us/financial-products/etfs/holdings/main/holdings/0?audienceType=Investor&action=download&ticker=QQQ"
-            df = pd.read_csv(url)
-            stocks = df['Holding Ticker'].dropna().tolist()
-            stocks = [s.strip().split()[0] for s in stocks if isinstance(s, str)]
-            stocks = [s for s in stocks if s.isalpha()]
-            print(f"Found {len(stocks)} NASDAQ stocks from QQQ")
-            return stocks
-            
-        except Exception as e:
-            print(f"Error fetching from QQQ: {e}")
-            return []
+
             
     def _fetch_nasdaq_from_static(self) -> List[str]:
-        """Return a static list of major NASDAQ stocks."""
+        """Return a static list of major NASDAQ stocks with caching."""
+        cache_key = "nasdaq_static_list"
+        cached_stocks = cache_service.get_from_memory(cache_key)
+        if cached_stocks:
+            print("Using cached static NASDAQ list")
+            return cached_stocks
+            
+        # Expanded list of NASDAQ stocks for better coverage
         stocks = [
             "AAPL", "MSFT", "AMZN", "NVDA", "META", "GOOGL", "GOOG", "TSLA",
             "AMD", "ADBE", "NFLX", "CSCO", "INTC", "CMCSA", "PEP", "AVGO",
             "COST", "TMUS", "QCOM", "TXN", "INTU", "AMAT", "ISRG", "ADP",
             "BKNG", "GILD", "MDLZ", "PYPL", "REGN", "VRTX", "ABNB", "ADI",
-            "ASML", "CHTR", "LRCX", "MELI", "PANW", "SNPS", "WDAY", "CDNS"
+            "ASML", "CHTR", "LRCX", "MELI", "PANW", "SNPS", "WDAY", "CDNS",
+            "KLAC", "MCHP", "NXPI", "PAYX", "ROST", "SGEN", "SIRI", "SWKS",
+            "VRSK", "VRSN", "XLNX", "ZM", "DOCU", "DXCM", "FAST", "FISV",
+            "IDXX", "ILMN", "KDP", "LULU", "MAR", "MNST", "MTCH", "ODFL"
         ]
         print(f"Using fallback list of {len(stocks)} NASDAQ stocks")
+        
+        # Cache the static list (longer TTL since it rarely changes)
+        cache_service.set_in_memory(cache_key, stocks, ttl=86400)  # Cache for 24 hours
         return stocks
 
-    def fetch_full_russell_symbols(self) -> List[str]:
-        """Fetch complete list of Russell 2000 stocks using multiple sources."""
+    @cache_service.cache_method("russell_symbols", ttl_memory=3600, ttl_disk=86400)
+    async def fetch_full_russell_symbols(self) -> List[str]:
+        """Fetch complete list of Russell 2000 stocks using yfinance with caching."""
         try:
-            # Try Finviz first (most comprehensive)
-            stocks = self._fetch_russell_from_finviz()
-            if len(stocks) > 1000:  # Reasonable minimum for Russell 2000
+            # Use IWM (Russell 2000 ETF) to get Russell 2000 stocks
+            loop = asyncio.get_event_loop()
+            iwm = await loop.run_in_executor(None, yf.Ticker, "IWM")
+            info = await loop.run_in_executor(None, lambda: iwm.info)
+            
+            if 'holdings' in info:
+                stocks = [h['symbol'] for h in info['holdings'] if 'symbol' in h]
+                stocks = [s for s in stocks if s.isalpha()]
+                print(f"Found {len(stocks)} Russell 2000 stocks from IWM")
                 return stocks
                 
-            # Try iShares
-            stocks = self._fetch_russell_from_ishares()
-            if len(stocks) > 1000:
-                return stocks
-                
-            # Try Yahoo Finance
-            stocks = self._fetch_russell_from_yfinance()
-            if len(stocks) > 100:  # YFinance usually returns top holdings
-                return stocks
-                
-            # Final fallback to static list
+            # Fallback to static list if IWM fails
             return self._fetch_russell_from_static()
             
         except Exception as e:
             print(f"Error in fetch_full_russell_symbols: {e}")
             return self._fetch_russell_from_static()
             
-    def _fetch_russell_from_finviz(self) -> List[str]:
-        """Fetch Russell 2000 stocks from Finviz."""
-        try:
-            stocks = []
-            base_url = "https://finviz.com/screener.ashx"
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-            
-            # Fetch first page to get total count
-            params = {
-                'v': '111',
-                'f': 'idx_russell2000',
-                'r': '1',
-                'o': '-marketcap'  # Sort by market cap descending
-            }
-            
-            print(f"Fetching Russell 2000 stocks from Finviz with params: {params}")
-            response = requests.get(base_url, params=params, headers=headers)
-            response.raise_for_status()
-            
-            # Use pandas to parse HTML tables with better error handling
-            tables = pd.read_html(io.StringIO(response.text))
-            print(f"Found {len(tables)} tables in Russell 2000 response")
-            if not tables:
-                raise ValueError("No tables found in response")
-                
-            # Find the table with stock data (usually the last one)
-            stock_table = None
-            for table in reversed(tables):
-                if len(table.columns) >= 2 and any(col in table.columns for col in ['Ticker', 'Symbol', 'No.']):
-                    stock_table = table
-                    break
-                    
-            if stock_table is None:
-                raise ValueError("Could not find stock table")
-                
-            # Extract tickers
-            tickers = stock_table['Ticker'].tolist()
-            stocks.extend([str(t).strip() for t in tickers if pd.notna(t)])
-            
-            # Use fixed large number of pages to ensure we get all stocks
-            total_pages = 150  # 150 pages * 20 stocks = 3000 stocks (more than enough)
-            print(f"Using fixed {total_pages} pages to fetch Russell 2000 stocks")
-            
-            # Fetch remaining pages
-            for page in range(2, total_pages + 1):
-                try:
-                    params['r'] = str(1 + (page-1)*20)
-                    print(f"Fetching Russell 2000 page {page} with offset {params['r']}")
-                    response = requests.get(base_url, params=params, headers=headers)
-                    response.raise_for_status()
-                    
-                    tables = pd.read_html(io.StringIO(response.text))
-                    stock_table = None
-                    for table in reversed(tables):
-                        if len(table.columns) >= 2 and any(col in table.columns for col in ['Ticker', 'Symbol', 'No.']):
-                            stock_table = table
-                            break
-                            
-                    if stock_table is not None:
-                        ticker_col = next(col for col in stock_table.columns if col in ['Ticker', 'Symbol'])
-                        tickers = stock_table[ticker_col].tolist()
-                        stocks.extend([str(t).strip() for t in tickers if pd.notna(t)])
-                        print(f"Found {len(stocks)} Russell 2000 stocks so far...")
-                    
-                    # Rate limiting with progress update
-                    time.sleep(0.5)
-                    
-                except Exception as e:
-                    print(f"Error fetching page {page}: {e}")
-                    continue
-            
-            # Clean and deduplicate
-            stocks = list(set([s for s in stocks if s.isalpha()]))
-            print(f"Found {len(stocks)} Russell 2000 stocks from Finviz")
-            return stocks
-            
-        except Exception as e:
-            print(f"Error fetching from Finviz: {e}")
-            return []
-            
-    def _fetch_russell_from_ishares(self) -> List[str]:
-        """Fetch Russell 2000 stocks from iShares."""
-        try:
-            url = "https://www.ishares.com/us/products/239710/ishares-russell-2000-etf/1467271812596.ajax?fileType=csv&fileName=IWM_holdings&dataType=fund"
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-            
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-            
-            # Try different CSV parsing options
-            for sep in [',', '|', '\t']:
-                try:
-                    df = pd.read_csv(io.StringIO(response.text), sep=sep, on_bad_lines='skip')
-                    ticker_column = next((col for col in df.columns if any(t in col.lower() for t in ['ticker', 'symbol'])), None)
-                    if ticker_column:
-                        break
-                except Exception:
-                    continue
-            
-            if not ticker_column:
-                raise ValueError("Could not find ticker column")
-                
-            stocks = df[ticker_column].dropna().apply(lambda x: str(x).strip().split()[0]).tolist()
-            stocks = [s for s in stocks if s.isalpha()]
-            
-            print(f"Found {len(stocks)} Russell 2000 stocks from iShares")
-            return stocks
-            
-        except Exception as e:
-            print(f"Error fetching from iShares: {e}")
-            return []
-            
-    def _fetch_russell_from_yfinance(self) -> List[str]:
-        """Fetch Russell 2000 stocks from Yahoo Finance."""
-        try:
-            iwm = yf.Ticker("IWM")
-            info = iwm.info
-            if 'holdings' in info:
-                stocks = [h['symbol'] for h in info['holdings'] if 'symbol' in h]
-                stocks = [s for s in stocks if s.isalpha()]
-                print(f"Found {len(stocks)} Russell 2000 stocks from Yahoo Finance")
-                return stocks
-            raise ValueError("No holdings found in IWM info")
-        except Exception as e:
-            print(f"Error fetching from Yahoo Finance: {e}")
-            return []
+
             
     def _fetch_russell_from_static(self) -> List[str]:
-        """Return a static list of Russell 2000 stocks."""
+        """Return a static list of Russell 2000 stocks with caching."""
+        cache_key = "russell_static_list"
+        cached_stocks = cache_service.get_from_memory(cache_key)
+        if cached_stocks:
+            print("Using cached static Russell 2000 list")
+            return cached_stocks
+            
+        # Expanded list of Russell 2000 stocks for better coverage
         stocks = [
             "CROX", "AXON", "CELH", "IART", "EXAS", "PODD", "RH", "MEDP",
             "EXPO", "STAG", "SAIA", "STOR", "FIVE", "CVCO", "HALO", "RGEN",
-            "OMCL", "NATI", "PNFP", "VRNT", "CTRE", "AMED", "CORT", "PRAA"
+            "OMCL", "NATI", "PNFP", "VRNT", "CTRE", "AMED", "CORT", "PRAA",
+            "ACAD", "ADTN", "AEIS", "AGYS", "ALRM", "AMSF", "APEI", "ARCB",
+            "AVAV", "AVID", "AVNS", "AXTI", "BBSI", "BCOR", "BCOV", "BEAT",
+            "BGCP", "BGSF", "BKTI", "BLDR", "BMCH", "BOOM", "BOOT", "BRKS",
+            "CCMP", "CCOI", "CCRN", "CEVA", "CHEF", "CHUY", "CLAR", "CLFD"
         ]
         print(f"Using fallback list of {len(stocks)} Russell 2000 stocks")
+        
+        # Cache the static list (longer TTL since it rarely changes)
+        cache_service.set_in_memory(cache_key, stocks, ttl=86400)  # Cache for 24 hours
         return stocks
         
-    def fetch_index_constituents(self) -> List[Dict[str, str]]:
-        """Fetch all stocks from both Russell 2000 and NASDAQ."""
-        nasdaq_symbols = self.fetch_full_nasdaq_symbols()
-        russell_symbols = self.fetch_full_russell_symbols()
+    @cache_service.cache_method("index_constituents", ttl_memory=3600, ttl_disk=86400)
+    async def fetch_index_constituents(self) -> List[Dict[str, str]]:
+        """Fetch all stocks from both Russell 2000 and NASDAQ with caching."""
+        nasdaq_symbols = await self.fetch_full_nasdaq_symbols()
+        russell_symbols = await self.fetch_full_russell_symbols()
         
         # Create list of dictionaries with symbol and index type
         stocks = []
@@ -369,8 +144,9 @@ class StockService:
               f"({len(nasdaq_symbols)} NASDAQ, {len(russell_symbols)} Russell 2000)")
         return stocks
     
-    def get_stock_info(self, symbol: str, index_type: str) -> Optional[Dict]:
-        """Get stock information without market cap filtering."""
+    @cache_service.cache_method("stock_info", ttl_memory=300, ttl_disk=3600)
+    async def get_stock_info(self, symbol: str, index_type: str) -> Optional[Dict]:
+        """Get stock information with caching."""
         max_retries = 3
         retry_delay = 1
         
@@ -434,12 +210,12 @@ class StockService:
                     'name': name,
                     'market_cap': market_cap,
                     'index_type': index_type,
-                    'last_updated': end_date.isoformat()
+                    'last_updated': datetime.now(pytz.UTC).isoformat()
                 }
-            except requests.exceptions.RequestException as e:
+            except aiohttp.ClientError as e:
                 print(f"Network error fetching info for {symbol} (attempt {attempt + 1}): {e}")
                 if attempt < max_retries - 1:
-                    time.sleep(retry_delay * (attempt + 1))  # Exponential backoff
+                    await asyncio.sleep(retry_delay * (attempt + 1))  # Exponential backoff
                 continue
             except Exception as e:
                 print(f"Error fetching info for {symbol} (attempt {attempt + 1}): {e}")
@@ -450,67 +226,97 @@ class StockService:
         print(f"Failed to fetch info for {symbol} after {max_retries} attempts")
         return None
     
-    def fetch_daily_data(self, symbol: str, start_date: Optional[datetime] = None) -> pd.DataFrame:
-        """Fetch daily OHLC data for a stock."""
+    async def fetch_daily_data(self, symbol: str, start_date: Optional[datetime] = None) -> pd.DataFrame:
+        """Fetch daily OHLC data for a stock with caching."""
         try:
-            # Default to '6mo' period for sufficient historical data
-            period = '6mo'
-            if start_date:
-                # If start_date is provided, calculate period dynamically
-                days_diff = (datetime.now() - start_date).days
-                if days_diff <= 5:
-                    period = '5d'
-                elif days_diff <= 30:
-                    period = '1mo'
-                elif days_diff <= 90:
-                    period = '3mo'
-                elif days_diff <= 180:
-                    period = '6mo'
-                else:
-                    period = 'max'
-                    
-            # Download data using valid period
-            stock = yf.Ticker(symbol)
-            data = stock.history(period=period)
-            if data.empty:
-                print(f"No data available for {symbol} with period {period}")
-                return pd.DataFrame()
-                
-            return data
-            # Default to 2 years of data for MA200 calculations
-            if start_date is None:
-                start_date = datetime.now() - timedelta(days=730)
-            # Clean symbol - remove spaces and special characters
+            # Clean symbol and generate cache key
             clean_symbol = symbol.strip().replace(' ', '')
-            stock = yf.Ticker(clean_symbol)
-            # Fetch with retry on empty data
-            retries = 3
-            for attempt in range(retries):
-                df = stock.history(start=start_date)
-                if not df.empty:
-                    # Round to 4 decimal places for price precision
-                    for col in ['Open', 'High', 'Low', 'Close']:
-                        df[col] = df[col].round(4)
-                    return df
-                print(f"Attempt {attempt + 1}/{retries}: No data for {symbol}, retrying...")
-                time.sleep(2)
+            days = (datetime.now() - start_date).days if start_date else 180  # Default to 6 months
+            cache_key = f"daily_data_{clean_symbol}_{days}"
+            
+            # Check cache first
+            cached_data = cache_service.get_from_memory(cache_key)
+            if cached_data is not None:
+                print(f"Using cached daily data for {symbol}")
+                return pd.DataFrame(cached_data)
+
+            # Run yfinance operations in thread pool
+            loop = asyncio.get_event_loop()
+            stock = await loop.run_in_executor(None, yf.Ticker, clean_symbol)
+            
+            # Calculate period based on days
+            period = '6mo'  # Default
+            if days <= 5:
+                period = '5d'
+            elif days <= 30:
+                period = '1mo'
+            elif days <= 90:
+                period = '3mo'
+            elif days > 180:
+                period = 'max'
+            
+            # Fetch data with retries
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    # Use explicit date range if provided
+                    if start_date:
+                        hist = await loop.run_in_executor(
+                            None,
+                            lambda: stock.history(start=start_date.strftime('%Y-%m-%d'))
+                        )
+                    else:
+                        hist = await loop.run_in_executor(
+                            None,
+                            lambda: stock.history(period=period)
+                        )
+                    
+                    if not hist.empty:
+                        # Handle timezone
+                        hist.index = pd.to_datetime(hist.index).tz_localize('UTC').tz_convert('America/New_York')
+                        
+                        # Round to 4 decimal places for price precision
+                        for col in ['Open', 'High', 'Low', 'Close']:
+                            hist[col] = hist[col].round(4)
+                        
+                        # Cache the results
+                        cache_data = hist.reset_index().to_dict('records')
+                        cache_service.set_in_memory(cache_key, cache_data, ttl=1800)  # 30 minutes
+                        
+                        return hist
+                    
+                    print(f"Attempt {attempt + 1}/{max_retries}: No data for {symbol}, retrying...")
+                    await asyncio.sleep(2)
+                    
+                except Exception as e:
+                    print(f"Error on attempt {attempt + 1} for {symbol}: {e}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(2)
+                    continue
+            
+            print(f"Failed to fetch data for {symbol} after {max_retries} attempts")
             return pd.DataFrame()
+            
         except Exception as e:
             print(f"Error fetching data for {symbol}: {e}")
             return pd.DataFrame()
     
     def store_stock_data(self, stock_info: Dict) -> Stock:
-        """Store or update stock information in database."""
-        # Check if stock exists
-        stock = self.db.query(Stock).filter(Stock.symbol == stock_info['symbol']).first()
+        """Store or update stock information in database.
+        Maintains separate entries for stocks that exist in both indices."""
+        # Check if stock exists with the same symbol AND index_type
+        stock = self.db.query(Stock).filter(
+            Stock.symbol == stock_info['symbol'],
+            Stock.index_type == stock_info['index_type']
+        ).first()
         
         if stock:
-            # Update existing stock
+            # Update existing stock, preserving its index_type
             stock.name = stock_info['name']
             stock.market_cap = stock_info['market_cap']
-            stock.index_type = stock_info['index_type']
+            # Don't update index_type as it's part of the unique identifier
         else:
-            # Create new stock
+            # Create new stock entry
             stock = Stock(
                 symbol=stock_info['symbol'],
                 name=stock_info['name'],
@@ -518,6 +324,7 @@ class StockService:
                 index_type=stock_info['index_type']
             )
             self.db.add(stock)
+            print(f"Adding new stock: {stock_info['symbol']} ({stock_info['index_type']})")
         
         try:
             self.db.commit()
@@ -563,18 +370,36 @@ class StockService:
             print(f"Error storing price data for {stock.symbol}: {e}")
             self.db.rollback()
     
-    def update_all_data(self):
+    async def update_all_data(self):
         """Update all stock data."""
         try:
             # Get list of stocks from indices
-            stocks = self.fetch_index_constituents()
+            stocks = await self.fetch_index_constituents()
             
-            # Get stock info for each symbol
+            # Get stock info for each symbol in parallel batches
+            batch_size = 10  # Process 10 stocks at a time
             stock_info_list = []
-            for stock in stocks:
-                info = self.get_stock_info(stock['symbol'], stock['index_type'])
-                if info:
-                    stock_info_list.append(info)
+            
+            for i in range(0, len(stocks), batch_size):
+                batch = stocks[i:i + batch_size]
+                tasks = []
+                
+                for stock in batch:
+                    task = asyncio.create_task(
+                        self.get_stock_info(stock['symbol'], stock['index_type'])
+                    )
+                    tasks.append(task)
+                
+                # Wait for batch to complete
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # Filter out errors and None results
+                for result in results:
+                    if result and not isinstance(result, Exception):
+                        stock_info_list.append(result)
+                
+                # Add delay between batches to avoid rate limits
+                await asyncio.sleep(2)
             
             # Start date for historical data (2.5 years for reliable MA200 calculation)
             start_date = datetime.now() - timedelta(days=913)  # 2.5 years for padding
@@ -582,38 +407,30 @@ class StockService:
             success_count = 0
             error_count = 0
             
-            # Add delay between batches to avoid rate limits
-            batch_size = 25  # Reduced batch size
-            batch_delay = 10  # Increased delay between batches
-            
-            # Process stocks in batches to avoid rate limits
-            for i, stock_info in enumerate(stock_info_list):
-                if i > 0 and i % batch_size == 0:
-                    print(f"Sleeping for {batch_delay}s after processing {batch_size} stocks...")
-                    time.sleep(batch_delay)
-                try:
-                    # Store or update stock info
-                    stock = self.store_stock_data(stock_info)
-                    
-                    # Fetch and store price data
-                    price_data = self.fetch_daily_data(stock_info['symbol'], start_date)
-                    if not price_data.empty:
-                        # Clear existing price data for this stock
-                        self.db.query(StockPrice).filter(
-                            StockPrice.stock_id == stock.id
-                        ).delete()
-                        
-                        # Store new price data
-                        self.store_price_data(stock, price_data)
-                        success_count += 1
-                        print(f"Successfully updated {stock_info['symbol']} with {len(price_data)} price records")
-                    else:
-                        print(f"No price data available for {stock_info['symbol']}")
+            # Process stocks in parallel batches
+            batch_size = 5  # Smaller batch size for price data
+            for i in range(0, len(stock_info_list), batch_size):
+                batch = stock_info_list[i:i + batch_size]
+                tasks = []
+                
+                for stock_info in batch:
+                    task = asyncio.create_task(self._update_single_stock(stock_info, start_date))
+                    tasks.append(task)
+                
+                # Wait for batch to complete
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # Process results
+                for result in results:
+                    if isinstance(result, Exception):
                         error_count += 1
-                except Exception as e:
-                    print(f"Error processing {stock_info['symbol']}: {str(e)}")
-                    error_count += 1
-                    continue
+                        print(f"Error in batch: {result}")
+                    elif result:  # True indicates success
+                        success_count += 1
+                
+                # Add delay between batches
+                await asyncio.sleep(5)
+                print(f"Progress: {success_count + error_count}/{len(stock_info_list)} stocks processed")
             
             return {
                 "status": "completed",
@@ -621,6 +438,45 @@ class StockService:
                 "error_count": error_count,
                 "total_stocks": len(stock_info_list)
             }
+            
         except Exception as e:
             print(f"Fatal error in update_all_data: {str(e)}")
             raise
+            
+    async def _update_single_stock(self, stock_info: Dict, start_date: datetime) -> bool:
+        """Update data for a single stock."""
+        try:
+            # Store or update stock info
+            loop = asyncio.get_event_loop()
+            stock = await loop.run_in_executor(
+                None,
+                lambda: self.store_stock_data(stock_info)
+            )
+            
+            # Fetch and store price data
+            price_data = await self.fetch_daily_data(stock_info['symbol'], start_date)
+            if not price_data.empty:
+                # Run database operations in thread pool
+                await loop.run_in_executor(
+                    None,
+                    lambda: (
+                        self.db.query(StockPrice)
+                        .filter(StockPrice.stock_id == stock.id)
+                        .delete()
+                    )
+                )
+                
+                await loop.run_in_executor(
+                    None,
+                    lambda: self.store_price_data(stock, price_data)
+                )
+                
+                print(f"Successfully updated {stock_info['symbol']} with {len(price_data)} price records")
+                return True
+            else:
+                print(f"No price data available for {stock_info['symbol']}")
+                return False
+                
+        except Exception as e:
+            print(f"Error processing {stock_info['symbol']}: {str(e)}")
+            return False

@@ -9,7 +9,7 @@ class SuppressionService:
         """Initialize suppression service with database session."""
         self.db = db
         # Default MA periods to analyze (limited to MA10-MA60 range)
-        self.ma_periods = [10, 20, 50, 60]  # Removed MA5 and periods above MA60
+        self.ma_periods = [10, 20, 30, 40, 50, 60]  # More granular periods between 10-60
         # Weights for suppression score calculation
         self.w1 = 0.5  # Contact rule weight
         self.w2 = 0.3  # Breakthrough rule weight
@@ -96,21 +96,25 @@ class SuppressionService:
             return 0.0
     
     def calculate_suppression_score(self, contacts: int, breakthroughs: int, 
-                                  avg_deviation: float, total_days: int) -> float:
+                                  avg_deviation: float, total_days: int, ma_period: int) -> float:
         """
-        Calculate suppression score using weighted formula.
+        Calculate suppression score using weighted formula with MA period normalization.
         
-        Score = W1 * (C/T) + W2 * (B/T) - W3 * D
+        Score = W1 * (C/T) + W2 * (B/T) - W3 * (D/P)
         where:
         - C: Number of contacts with MA
         - B: Number of breakthroughs and fallbacks
         - D: Average deviation from MA (%)
         - T: Total number of trading days
+        - P: MA period length (for normalizing deviation)
         """
+        # Normalize deviation by MA period length (longer periods naturally have higher deviation)
+        normalized_deviation = avg_deviation / (ma_period / 10)  # Normalize relative to MA10
+        
         score = float(
             self.w1 * (contacts / total_days) +
             self.w2 * (breakthroughs / total_days) -
-            self.w3 * avg_deviation
+            self.w3 * normalized_deviation
         )
         return round(score, 4)
     
@@ -171,13 +175,21 @@ class SuppressionService:
             ma
         )
         
-        # Calculate final score
+        # Calculate final score with MA period normalization
         score = self.calculate_suppression_score(
-            contacts,
-            breakthroughs,
-            avg_deviation,
-            len(prices)
+            contacts=contacts,
+            breakthroughs=breakthroughs,
+            avg_deviation=avg_deviation,
+            total_days=len(prices),
+            ma_period=ma_period
         )
+        
+        # Debug logging
+        print(f"Analysis for {stock.symbol} MA{ma_period}:")
+        print(f"- Contacts: {contacts}")
+        print(f"- Breakthroughs: {breakthroughs}")
+        print(f"- Avg Deviation: {avg_deviation:.4f}")
+        print(f"- Score: {score:.4f}")
         
         return {
             'ma_period': ma_period,

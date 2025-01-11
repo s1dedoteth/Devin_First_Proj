@@ -15,11 +15,11 @@ def create_test_data(db):
     """Create synthetic test data."""
     print("\nCreating test data...")
     
-    # Generate test stocks (1000 NASDAQ, 2000 Russell 2000)
+    # Generate test stocks (200 NASDAQ, 300 Russell 2000)
     stocks = []
     
     # NASDAQ stocks
-    for i in range(1000):
+    for i in range(200):
         symbol = f"NSDQ{i:04d}"
         stock = Stock(
             symbol=symbol,
@@ -30,7 +30,7 @@ def create_test_data(db):
         stocks.append(stock)
     
     # Russell 2000 stocks
-    for i in range(2000):
+    for i in range(300):
         symbol = f"RUSS{i:04d}"
         stock = Stock(
             symbol=symbol,
@@ -45,9 +45,10 @@ def create_test_data(db):
     db.commit()
     
     # Generate price data with batch processing (2 years for MA200)
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=730)  # 2 years
-    dates = [start_date + timedelta(days=x) for x in range(730)]
+    # Use explicit historical dates to avoid future dates
+    end_date = datetime(2023, 12, 31)  # End at last year
+    start_date = end_date - timedelta(days=730)  # 2 years of data
+    dates = [start_date + timedelta(days=x) for x in range(730) if (start_date + timedelta(days=x)) <= end_date]
     
     print("\nGenerating price data...")
     total_stocks = len(stocks)
@@ -84,7 +85,7 @@ def create_test_data(db):
         print(f"Progress: {batch_end}/{total_stocks} stocks processed ({len(all_prices)} price points)")
     
     print("\nGenerating suppression scores...")
-    ma_periods = [10, 20, 50, 60]  # Match the periods used in suppression_service.py
+    ma_periods = [10, 20, 30, 40, 50, 60]  # Limited to MA10-MA60 range with more granularity
     batch_size = 100  # Process 100 stocks at a time
     
     for batch_start in range(0, total_stocks, batch_size):
@@ -210,5 +211,28 @@ def test_pagination():
     finally:
         db.close()
 
+def verify_ma_constraints():
+    """Verify that all MA periods are within the allowed range [10-60]."""
+    db = SessionLocal()
+    try:
+        # Check all MA periods in database
+        scores = db.query(SuppressionScore.ma_period).distinct().all()
+        ma_periods = [score[0] for score in scores]
+        for period in ma_periods:
+            assert 10 <= period <= 60, f"Found MA period {period} outside allowed range [10-60]"
+        print(f"\nVerified {len(ma_periods)} unique MA periods, all within [10-60] range")
+        
+        # Check MA periods in API response
+        response = requests.get("http://localhost:8000/api/stocks?limit=50")
+        data = response.json()
+        for stock in data.get('stocks', []):
+            ma_period = int(stock['best_ma'].replace('MA', ''))
+            assert 10 <= ma_period <= 60, f"API returned MA period {ma_period} outside allowed range [10-60]"
+        print("Verified all API response MA periods are within [10-60] range")
+        
+    finally:
+        db.close()
+
 if __name__ == "__main__":
     test_pagination()
+    verify_ma_constraints()

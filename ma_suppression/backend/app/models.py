@@ -8,12 +8,17 @@ class Stock(Base):
     __tablename__ = "stocks"
     
     id = Column(Integer, primary_key=True, index=True)
-    symbol = Column(String(10), unique=True, index=True)
+    symbol = Column(String(10), index=True)  # Removed unique constraint
     name = Column(String(100), index=True)
     market_cap = Column(Float, index=True)  # Indexed for filtering by market cap
     index_type = Column(String(20), index=True)  # "RUSSELL2000" or "NASDAQ", indexed for filtering
     prices = relationship("StockPrice", back_populates="stock")
     suppression_scores = relationship("SuppressionScore", back_populates="stock")
+    
+    __table_args__ = (
+        # Composite unique constraint for symbol + index_type
+        Index('idx_symbol_index', 'symbol', 'index_type', unique=True),
+    )
 
 class StockPrice(Base):
     __tablename__ = "stock_prices"
