@@ -13,8 +13,11 @@ import json
 import time
 from datetime import datetime, timedelta
 
-# Use SQLite for development
-SQLALCHEMY_DATABASE_URL = "sqlite:///./ma_suppression.db"
+# Use SQLite with proper path
+DB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+os.makedirs(DB_DIR, exist_ok=True)
+DB_PATH = os.path.join(DB_DIR, "ma_suppression.db")
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

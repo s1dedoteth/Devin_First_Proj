@@ -5,14 +5,23 @@ from app.services.suppression_service import SuppressionService
 import os
 
 def init_database():
-    db_file = "./ma_suppression.db"
+    # Use same database path as main.py
+    db_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+    os.makedirs(db_dir, exist_ok=True)
+    db_file = os.path.join(db_dir, "ma_suppression.db")
+    print(f"Using database file: {db_file}")
     
     # Remove existing database file if it exists
     if os.path.exists(db_file):
         print(f"Removing existing database file: {db_file}")
         os.remove(db_file)
+        
+    # Ensure directory has proper permissions
+    os.chmod(db_dir, 0o777)
     
     print("Creating database tables...")
+    # Drop all tables first
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     
     db = SessionLocal()
