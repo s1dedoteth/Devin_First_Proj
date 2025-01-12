@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import asyncio
 from typing import List, Dict, Tuple
 from sqlalchemy.orm import Session
 from ..models import Stock, StockPrice, SuppressionScore
@@ -199,7 +200,7 @@ class SuppressionService:
             'avg_deviation': avg_deviation
         }
     
-    def analyze_all_stocks(self) -> None:
+    async def analyze_all_stocks(self) -> None:
         """Analyze all stocks and store results in database."""
         stocks = self.db.query(Stock).all()
         
@@ -210,6 +211,7 @@ class SuppressionService:
             ).delete()
             
             # Analyze each MA period
+            scores_batch = []
             for period in self.ma_periods:
                 result = self.analyze_stock(stock, period)
                 if result:
@@ -221,11 +223,17 @@ class SuppressionService:
                         breakthroughs=int(result['breakthroughs']),
                         avg_deviation=float(result['avg_deviation'])
                     )
-                    self.db.add(score)
+                    scores_batch.append(score)
             
             try:
-                self.db.commit()
-                print(f"Successfully analyzed {stock.symbol}")
+                # Batch commit scores for better performance
+                if scores_batch:
+                    self.db.add_all(scores_batch)
+                    self.db.commit()
+                    print(f"Successfully analyzed {stock.symbol} with {len(scores_batch)} scores")
             except Exception as e:
                 print(f"Error analyzing {stock.symbol}: {e}")
                 self.db.rollback()
+            
+            # Allow other tasks to run
+            await asyncio.sleep(0.1)

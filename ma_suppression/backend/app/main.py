@@ -52,25 +52,18 @@ os.makedirs(DB_DIR, exist_ok=True)
 DB_PATH = os.path.join(DB_DIR, "ma_suppression.db")
 # Configure SQLite to use WAL mode for better concurrency and performance
 import sqlite3
-# Configure SQLite URL with query parameters for pragmas
-SQLALCHEMY_DATABASE_URL = (
-    f"sqlite:///{DB_PATH}"
-    "?journal_mode=WAL"
-    "&synchronous=NORMAL"
-    "&foreign_keys=ON"
-    "&temp_store=MEMORY"
-)
+# Configure SQLite URL with minimal options
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
     connect_args={
         "check_same_thread": False,
-        "timeout": 30,
-        "isolation_level": "DEFERRED"
+        "timeout": 30
     },
-    # Conservative connection pooling
-    pool_size=5,
-    max_overflow=10,
+    # Aggressive connection pooling for better performance
+    pool_size=10,
+    max_overflow=20,
     pool_timeout=30,
     pool_recycle=1800
 )
@@ -125,8 +118,27 @@ async def init_database():
         
         db = SessionLocal()
         try:
-            # Use engine-level SQLite configuration
-            db.execute(text("PRAGMA foreign_keys = ON"))
+            # Configure SQLite pragmas for performance
+            pragmas = [
+                "PRAGMA journal_mode=WAL",
+                "PRAGMA synchronous=OFF",
+                "PRAGMA cache_size=-2000",
+                "PRAGMA temp_store=MEMORY",
+                "PRAGMA foreign_keys=ON",
+                "PRAGMA mmap_size=8388608",
+                "PRAGMA page_size=4096",
+                "PRAGMA busy_timeout=30000",
+                "PRAGMA read_uncommitted=1"
+            ]
+            
+            # Execute pragmas
+            for pragma in pragmas:
+                db.execute(text(pragma))
+                print(f"Executed: {pragma}")
+            
+            # Verify connection
+            db.execute(text("SELECT 1"))
+            print("Database connection verified")
             
             # Check database status with raw SQL for minimal memory usage
             stock_count = db.execute(text("SELECT COUNT(*) FROM stocks")).scalar()
@@ -338,11 +350,11 @@ async def update_stocks(db: Session = Depends(get_db)):
     """Manually trigger stock data update."""
     try:
         stock_service = StockService(db)
-        stock_service.update_all_data()
+        await stock_service.update_all_data()  # Add await here
         
         # After updating stock data, analyze suppression patterns
         suppression_service = SuppressionService(db)
-        suppression_service.analyze_all_stocks()
+        await suppression_service.analyze_all_stocks()  # Add await here
         
         return {
             "status": "success", 
