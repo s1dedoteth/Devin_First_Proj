@@ -505,43 +505,168 @@ def get_cached_stocks(params_str: str) -> Dict[str, Any]:
     params = json.loads(params_str)
     with get_db_session() as db:
         try:
+            # Verify database connection
+            db.execute(text("SELECT 1"))
             return execute_stock_query(params, db)
         except Exception as e:
             print(f"Error executing stock query: {e}")
             # Clear cache on error to prevent stale data
             get_cached_stocks.cache_clear()
-            raise
+            # Return empty result set instead of raising
+            return {
+                "stocks": [],
+                "total": 0,
+                "page": params.get("page", 1),
+                "limit": params.get("limit", 50),
+                "total_pages": 0,
+                "initializing": True,
+                "progress": {
+                    "stocks": 0,
+                    "scores": 0
+                }
+            }
+
+def execute_filtered_query(query, params: dict, db: Session) -> Dict:
+    """Apply filters and pagination to the stock query."""
+    try:
+        # Apply search filter if provided
+        if params.get("search"):
+            search = f"%{params['search']}%"
+            query = query.filter(
+                (Stock.symbol.ilike(search)) |
+                (Stock.name.ilike(search))
+            )
+        
+        # Apply index type filter if provided
+        if params.get("index_type"):
+            query = query.filter(Stock.index_type == params["index_type"])
+        
+        # Get total count for pagination
+        total = query.count()
+        
+        # Apply sorting
+        if params.get("sort") == "score":
+            query = query.order_by(
+                desc(SuppressionScore.score) if params.get("order") == "desc"
+                else SuppressionScore.score
+            )
+        elif params.get("sort") == "ma_period":
+            query = query.order_by(
+                desc(SuppressionScore.ma_period) if params.get("order") == "desc"
+                else SuppressionScore.ma_period
+            )
+        else:
+            # Default sort by market cap
+            query = query.order_by(desc(Stock.market_cap))
+        
+        # Apply pagination
+        page = max(params.get("page", 1), 1)
+        limit = max(params.get("limit", 50), 1)
+        offset = (page - 1) * limit
+        
+        # Execute paginated query
+        stocks = query.offset(offset).limit(limit).all()
+        
+        # Format results
+        return {
+            "stocks": [
+                {
+                    "symbol": stock[0].symbol,
+                    "name": stock[0].name,
+                    "market_cap": stock[0].market_cap,
+                    "index_type": stock[0].index_type,
+                    "best_ma": f"MA{stock[1]}" if stock[1] else None,
+                    "suppression_score": float(stock[2]) if stock[2] else 0.0,
+                    "latest_price": float(stock[3]) if stock[3] else None,
+                    "latest_date": stock[4].isoformat() if stock[4] else None
+                }
+                for stock in stocks
+            ],
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "total_pages": (total + limit - 1) // limit
+        }
+    except Exception as e:
+        print(f"Error in execute_filtered_query: {e}")
+        return {
+            "stocks": [],
+            "total": 0,
+            "page": params.get("page", 1),
+            "limit": params.get("limit", 50),
+            "total_pages": 0
+        }
 
 def execute_stock_query(params: dict, db: Session) -> Dict:
     """Execute the stock query with given parameters and return formatted response."""
-    # Get latest prices first
-    latest_prices = (
-        db.query(
-            StockPrice.stock_id,
-            StockPrice.date,
-            StockPrice.close,
-            func.row_number().over(
-                partition_by=StockPrice.stock_id,
-                order_by=StockPrice.date.desc()
-            ).label('rn')
+    try:
+        # Configure SQLite pragmas for this connection
+        pragmas = [
+            "PRAGMA read_uncommitted=1",
+            "PRAGMA cache_size=-2000",
+            "PRAGMA temp_store=MEMORY"
+        ]
+        for pragma in pragmas:
+            try:
+                db.execute(text(pragma))
+            except Exception as e:
+                print(f"Warning: Failed to set pragma {pragma}: {e}")
+                
+        # Get latest prices first
+        latest_prices = (
+            db.query(
+                StockPrice.stock_id,
+                StockPrice.date,
+                StockPrice.close,
+                func.row_number().over(
+                    partition_by=StockPrice.stock_id,
+                    order_by=StockPrice.date.desc()
+                ).label('rn')
+            )
+            .subquery()
         )
-        .subquery()
-    )
     
-    # Get best suppression scores with proper normalization
-    best_scores = (
-        db.query(
-            SuppressionScore.stock_id,
-            SuppressionScore.ma_period,
-            SuppressionScore.score,
-            func.row_number().over(
-                partition_by=SuppressionScore.stock_id,
-                order_by=SuppressionScore.score.desc()
-            ).label('rn')
+        # Get best suppression scores with proper normalization
+        best_scores = (
+            db.query(
+                SuppressionScore.stock_id,
+                SuppressionScore.ma_period,
+                SuppressionScore.score,
+                func.row_number().over(
+                    partition_by=SuppressionScore.stock_id,
+                    order_by=SuppressionScore.score.desc()
+                ).label('rn')
+            )
+            .filter(SuppressionScore.ma_period.between(10, 60))  # Only consider MA10-MA60
+            .subquery()
         )
-        .filter(SuppressionScore.ma_period.between(10, 60))  # Only consider MA10-MA60
-        .subquery()
-    )
+        
+        # Rest of the query execution...
+        # Build main query with efficient joins
+        query = (
+            db.query(
+                Stock,
+                best_scores.c.ma_period,
+                best_scores.c.score,
+                latest_prices.c.close,
+                latest_prices.c.date
+            )
+            .outerjoin(best_scores, (Stock.id == best_scores.c.stock_id) & (best_scores.c.rn == 1))
+            .outerjoin(latest_prices, (Stock.id == latest_prices.c.stock_id) & (latest_prices.c.rn == 1))
+        )
+        
+        # Apply filters and return results
+        return execute_filtered_query(query, params, db)
+        
+    except Exception as e:
+        print(f"Error executing stock query: {e}")
+        return {
+            "stocks": [],
+            "total": 0,
+            "page": params.get("page", 1),
+            "limit": params.get("limit", 50),
+            "total_pages": 0
+        }
     
     # Build main query with efficient joins
     query = (
