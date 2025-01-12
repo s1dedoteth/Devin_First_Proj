@@ -12,12 +12,12 @@ import requests
 import time
 import json
 
-def create_test_data(db, batch_size: int = 2):
-    """Create synthetic test data with absolute minimal memory usage."""
+def create_test_data(db, batch_size: int = 50):
+    """Create synthetic test data with memory-efficient batching."""
     print("\nCreating test data...")
     
     def create_stock_batch(start: int, count: int, is_nasdaq: bool) -> list:
-        """Create a tiny batch of stocks."""
+        """Create a batch of stocks."""
         batch = []
         for i in range(start, start + count):
             prefix = "NSDQ" if is_nasdaq else "RUSS"
@@ -31,32 +31,25 @@ def create_test_data(db, batch_size: int = 2):
             batch.append(stock)
         return batch
     
-    # Generate absolute minimal test data (1 stock per index)
-    total_stocks = 2  # 1 NASDAQ, 1 Russell 2000
+    # Generate NASDAQ stocks (100 stocks)
+    nasdaq_total = 100
+    for batch_start in range(0, nasdaq_total, batch_size):
+        batch_end = min(batch_start + batch_size, nasdaq_total)
+        stock_batch = create_stock_batch(batch_start, batch_end - batch_start, True)
+        db.add_all(stock_batch)
+        db.commit()
+        print(f"Added NASDAQ stocks {batch_start+1}-{batch_end}")
+        gc.collect()
     
-    # Add one NASDAQ stock
-    stock = Stock(
-        symbol="NSDQ0001",
-        name="NASDAQ Test Stock",
-        market_cap=random.uniform(1e9, 500e9),
-        index_type="NASDAQ"
-    )
-    db.add(stock)
-    db.commit()
-    print("Added NASDAQ test stock")
-    gc.collect()  # Force garbage collection
-    
-    # Add one Russell 2000 stock
-    stock = Stock(
-        symbol="RUSS0001",
-        name="Russell Test Stock",
-        market_cap=random.uniform(0.5e9, 10e9),
-        index_type="RUSSELL2000"
-    )
-    db.add(stock)
-    db.commit()
-    print("Added Russell test stock")
-    gc.collect()  # Force garbage collection
+    # Generate Russell 2000 stocks (200 stocks)
+    russell_total = 200
+    for batch_start in range(0, russell_total, batch_size):
+        batch_end = min(batch_start + batch_size, russell_total)
+        stock_batch = create_stock_batch(batch_start, batch_end - batch_start, False)
+        db.add_all(stock_batch)
+        db.commit()
+        print(f"Added Russell stocks {batch_start+1}-{batch_end}")
+        gc.collect()
     
     print("Created test stocks (1 NASDAQ, 1 Russell 2000)")
     
@@ -166,7 +159,11 @@ def test_pagination():
         from app.services.suppression_service import SuppressionService
         print("\nCalculating suppression scores...")
         suppression_service = SuppressionService(db)
-        suppression_service.analyze_all_stocks()
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(suppression_service.analyze_all_stocks())
+        loop.close()
         print("Suppression analysis complete.")
         
         # Test pagination endpoints

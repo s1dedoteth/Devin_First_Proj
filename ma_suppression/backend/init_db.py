@@ -31,7 +31,11 @@ def init_database():
         
         print("Calculating suppression scores...")
         suppression_service = SuppressionService(db)
-        suppression_service.analyze_all_stocks()
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(suppression_service.analyze_all_stocks())
+        loop.close()
         
         # Verify database contents
         from app.models import Stock, SuppressionScore
