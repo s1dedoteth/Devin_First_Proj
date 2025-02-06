@@ -1,4 +1,4 @@
-import type { ServerRoute } from '@hapi/hapi';
+import { ServerRoute } from '@hapi/hapi';
 import { decodeRoute } from './decode.js';
 import { decodeIdRoute } from './decodeId.js';
 import { searchIdRoute } from './searchId.js';

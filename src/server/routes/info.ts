@@ -1,4 +1,4 @@
-import type { ServerRoute } from '@hapi/hapi';
+import { ServerRoute } from '@hapi/hapi';
 import { DatabaseManager } from '../../database/DatabaseManager.js';
 
 export const infoRoute: ServerRoute = {
