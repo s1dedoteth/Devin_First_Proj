@@ -1,8 +1,8 @@
-import type { ServerRoute, Request, ResponseToolkit } from '@hapi/hapi';
+import * as Hapi from '@hapi/hapi';
 import { FlashDetector } from '../../core/FlashDetector.js';
 import Joi from 'joi';
 
-export const decodeIdRoute: ServerRoute = {
+export const decodeIdRoute: Hapi.ServerRoute = {
   method: 'GET',
   path: '/decodeId',
   options: {

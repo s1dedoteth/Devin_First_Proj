@@ -1,8 +1,8 @@
-import type { ServerRoute, Request, ResponseToolkit } from '@hapi/hapi';
+import * as Hapi from '@hapi/hapi';
 import { DatabaseManager } from '../../database/DatabaseManager.js';
 import Joi from 'joi';
 
-export const summaryIdRoute: ServerRoute = {
+export const summaryIdRoute: Hapi.ServerRoute = {
   method: 'GET',
   path: '/summaryId',
   options: {

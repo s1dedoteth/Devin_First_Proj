@@ -1,4 +1,4 @@
-import type { ServerRoute } from '@hapi/hapi';
+import * as Hapi from '@hapi/hapi';
 import { decodeRoute } from './decode.js';
 import { decodeIdRoute } from './decodeId.js';
 import { searchIdRoute } from './searchId.js';
@@ -17,7 +17,7 @@ export {
   infoRoute
 };
 
-export const routes: ServerRoute[] = [
+export const routes: Hapi.ServerRoute[] = [
   decodeRoute,
   decodeIdRoute,
   searchIdRoute,

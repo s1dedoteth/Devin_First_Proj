@@ -1,7 +1,7 @@
-import type { ServerRoute, Request, ResponseToolkit } from '@hapi/hapi';
+import * as Hapi from '@hapi/hapi';
 import { DatabaseManager } from '../../database/DatabaseManager.js';
 
-export const infoRoute: ServerRoute = {
+export const infoRoute: Hapi.ServerRoute = {
   method: 'GET',
   path: '/info',
   handler: async (request, h) => {
