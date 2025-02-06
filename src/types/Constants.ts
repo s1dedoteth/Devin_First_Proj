@@ -1,0 +1,20 @@
+export const Constants = {
+  UNKNOWN: 'Unknown',
+  UNKNOWN_PROP: -1,
+  USA: 'USA',
+  SINGAPORE: 'Singapore',
+  ITALY: 'Italy',
+  JAPAN: 'Japan',
+  CHINA: 'China',
+  TAIWAN: 'Taiwan',
+  KOREA: 'Korea',
+  MIXED: 'Mixed',
+  ISRAEL: 'Israel',
+  IRELAND: 'Ireland',
+  MALAYSIA: 'Malaysia',
+  PHILIPPINES: 'Philippines',
+  VENDOR_MICRON: 'Micron',
+  DIFFUSION: 'Diffusion',
+  ENCAPSULATION: 'Encapsulation',
+  MICRON_PN: 'Micron Part Number'
+} as const;
