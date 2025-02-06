@@ -1,5 +1,5 @@
 import type { ServerRoute } from '@hapi/hapi';
-import { DatabaseManager } from '../../database/DatabaseManager';
+import { DatabaseManager } from '../../database/DatabaseManager.js';
 
 export const infoRoute: ServerRoute = {
   method: 'GET',

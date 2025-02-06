@@ -1,11 +1,11 @@
 import type { ServerRoute } from '@hapi/hapi';
-import { decodeRoute } from './decode';
-import { decodeIdRoute } from './decodeId';
-import { searchIdRoute } from './searchId';
-import { searchPnRoute } from './searchPn';
-import { summaryRoute } from './summary';
-import { summaryIdRoute } from './summaryId';
-import { infoRoute } from './info';
+import { decodeRoute } from './decode.js';
+import { decodeIdRoute } from './decodeId.js';
+import { searchIdRoute } from './searchId.js';
+import { searchPnRoute } from './searchPn.js';
+import { summaryRoute } from './summary.js';
+import { summaryIdRoute } from './summaryId.js';
+import { infoRoute } from './info.js';
 
 export {
   decodeRoute,

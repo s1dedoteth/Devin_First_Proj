@@ -1,9 +1,9 @@
 import Hapi from '@hapi/hapi';
-import { routes } from './routes/index';
-import { DatabaseManager } from '../database/DatabaseManager';
-import { ProcessorManager } from '../processors/ProcessorManager';
-import { DefaultProcessor } from '../processors/DefaultProcessor';
-import { FlashDetector } from '../core/FlashDetector';
+import { routes } from './routes/index.js';
+import { DatabaseManager } from '../database/DatabaseManager.js';
+import { ProcessorManager } from '../processors/ProcessorManager.js';
+import { DefaultProcessor } from '../processors/DefaultProcessor.js';
+import { FlashDetector } from '../core/FlashDetector.js';
 
 const init = async () => {
   const server = Hapi.server({

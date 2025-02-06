@@ -1,5 +1,5 @@
 import type { ServerRoute } from '@hapi/hapi';
-import { FlashDetector } from '../../core/FlashDetector';
+import { FlashDetector } from '../../core/FlashDetector.js';
 import Joi from 'joi';
 
 export const decodeIdRoute: ServerRoute = {
