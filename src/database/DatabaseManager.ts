@@ -1,7 +1,8 @@
 import type { FlashDatabase, DatabaseInfo, Iddb, Vendor, VendorInfo } from '../types/Database.js';
-import type { FlashIdInfoRaw } from '../types/FlashIdInfo.js';
+import type { FlashIdInfo } from '../types/FlashIdInfo.js';
 import type { FlashInfo } from '../types/FlashInfo.js';
 import { Constants } from '../types/Constants.js';
+import { FlashInfoImpl } from '../core/FlashInfoImpl.js';
 
 export class DatabaseManager {
   private static instance: DatabaseManager;
@@ -33,14 +34,14 @@ export class DatabaseManager {
     return this.database.info;
   }
 
-  public getFlashId(id: string): FlashIdInfoRaw | null {
+  public getFlashId(id: string): FlashIdInfo | null {
     if (!this.database) {
       throw new Error('Database not loaded');
     }
     return this.database.iddb.getFlashId(id);
   }
 
-  public getFlashIds(): Record<string, FlashIdInfoRaw> {
+  public getFlashIds(): Record<string, FlashIdInfo> {
     if (!this.database) {
       throw new Error('Database not loaded');
     }
@@ -72,6 +73,39 @@ export class DatabaseManager {
     return partNumbers[partNumber] || null;
   }
 
+  public getPartNumber(vendor: string, partNumber: string): FlashInfo | null {
+    const info = this.getVendorInfo(vendor, partNumber);
+    if (!info) return null;
+
+    const flashInfo = new FlashInfoImpl();
+    flashInfo.setPartNumber(partNumber)
+      .setVendor(vendor)
+      .setType(Constants.UNKNOWN)
+      .setDensity(Constants.UNKNOWN)
+      .setDeviceWidth(0)
+      .setCellLevel(info.c)
+      .setProcessNode(info.l)
+      .setGeneration(Constants.UNKNOWN)
+      .setInterface({
+        toggle: false,
+        async: false,
+        sync: false
+      })
+      .setClassification({
+        ce: info.e,
+        ch: info.n,
+        die: info.d,
+        rb: info.r
+      })
+      .setVoltage(Constants.UNKNOWN)
+      .setPackage(Constants.UNKNOWN)
+      .setController(info.t)
+      .setRemark(info.m)
+      .setExt({})
+      .setFlashId(info.id);
+    return flashInfo;
+  }
+
   public searchMicronFbgaCode(fbgaCode: string): string | null {
     if (!this.database?.micron) {
       return null;
@@ -90,33 +124,33 @@ export class DatabaseManager {
       const partNumbers = vendor.getPartNumbers();
       for (const [partNumber, info] of Object.entries(partNumbers)) {
         if (partMatch ? partNumber.includes(pn) : partNumber === pn) {
-          results[partNumber] = {
-            partNumber,
-            vendor: vendor.getName(),
-            type: Constants.UNKNOWN,
-            density: Constants.UNKNOWN,
-            deviceWidth: 0,
-            cellLevel: info.c,
-            processNode: info.l,
-            generation: Constants.UNKNOWN,
-            interface: {
+          const flashInfo = new FlashInfoImpl();
+          flashInfo.setPartNumber(partNumber)
+            .setVendor(vendor.getName())
+            .setType(Constants.UNKNOWN)
+            .setDensity(Constants.UNKNOWN)
+            .setDeviceWidth(0)
+            .setCellLevel(info.c)
+            .setProcessNode(info.l)
+            .setGeneration(Constants.UNKNOWN)
+            .setInterface({
               toggle: false,
               async: false,
               sync: false
-            },
-            classification: {
+            })
+            .setClassification({
               ce: info.e,
               ch: info.n,
               die: info.d,
               rb: info.r
-            },
-            voltage: Constants.UNKNOWN,
-            package: Constants.UNKNOWN,
-            controller: info.t,
-            remark: info.m,
-            extraInfo: {},
-            flashId: info.id
-          };
+            })
+            .setVoltage(Constants.UNKNOWN)
+            .setPackage(Constants.UNKNOWN)
+            .setController(info.t)
+            .setRemark(info.m)
+            .setExt({})
+            .setFlashId(info.id);
+          results[partNumber] = flashInfo;
 
           if (limit > 0 && Object.keys(results).length >= limit) {
             return results;
@@ -128,8 +162,8 @@ export class DatabaseManager {
     return results;
   }
 
-  public searchFlashId(id: string, partMatch: boolean = false, limit: number = 0): Record<string, FlashIdInfoRaw> {
-    const results: Record<string, FlashIdInfoRaw> = {};
+  public searchFlashId(id: string, partMatch: boolean = false, limit: number = 0): Record<string, FlashIdInfo> {
+    const results: Record<string, FlashIdInfo> = {};
     if (!this.database) {
       return results;
     }

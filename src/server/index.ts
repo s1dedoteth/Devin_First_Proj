@@ -1,18 +1,18 @@
-import * as Hapi from '@hapi/hapi';
+import { Server, ServerOptions, ServerRoute, ServerApplicationState } from '@hapi/hapi';
 import { routes } from './routes/index.js';
 import { DatabaseManager } from '../database/DatabaseManager.js';
 import { ProcessorManager } from '../processors/ProcessorManager.js';
 import { DefaultProcessor } from '../processors/DefaultProcessor.js';
 import { FlashDetector } from '../core/FlashDetector.js';
 
-const init = async () => {
-  const server = Hapi.server({
+const init = async (): Promise<void> => {
+  const server = new Server({
     port: process.env.PORT || 3000,
     host: process.env.HOST || 'localhost'
   });
 
   // Register routes
-  server.route(routes);
+  server.route(routes as ServerRoute[]);
 
   // Initialize database and processors
   const dbManager = DatabaseManager.getInstance();
@@ -27,7 +27,7 @@ const init = async () => {
   await server.start();
   console.log('Server running on %s', server.info.uri);
 
-  process.on('unhandledRejection', (err) => {
+  process.on('unhandledRejection', (err: Error) => {
     console.error('Unhandled rejection:', err);
     process.exit(1);
   });

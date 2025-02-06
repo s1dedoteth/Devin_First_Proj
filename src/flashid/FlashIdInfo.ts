@@ -1,28 +1,27 @@
 export class FlashIdInfo {
-  public s: number;  // Die
-  public p: number;  // Plane
-  public b: number;  // Block
-  public t: string[];  // Controllers
-  public n: string[];  // Part Numbers
-  public vendor: string;
-  public cellLevel: string;
-  public density: string;
-  public processNode: string;
-  public voltage: string;
-  public ext: Record<string, string>;
+  private type: string = '';
+  private vendor: string = '';
+  private cellLevel: string = '';
+  private density: string = '';
+  private processNode: string = '';
+  private voltage: string = '';
+  private ext: Record<string, any> = {};
 
   constructor(id: number) {
-    this.s = -1;
-    this.p = -1;
-    this.b = -1;
-    this.t = [];
-    this.n = [];
-    this.vendor = '';
-    this.cellLevel = '';
-    this.density = '';
-    this.processNode = '';
-    this.voltage = '';
-    this.ext = {};
+    // Initialize with empty values
+  }
+
+  public getType(): string {
+    return this.type;
+  }
+
+  public setType(type: string): this {
+    this.type = type;
+    return this;
+  }
+
+  public getVendor(): string {
+    return this.vendor;
   }
 
   public setVendor(vendor: string): this {
@@ -30,9 +29,17 @@ export class FlashIdInfo {
     return this;
   }
 
+  public getCellLevel(): string {
+    return this.cellLevel;
+  }
+
   public setCellLevel(cellLevel: string): this {
     this.cellLevel = cellLevel;
     return this;
+  }
+
+  public getDensity(): string {
+    return this.density;
   }
 
   public setDensity(density: string): this {
@@ -40,9 +47,17 @@ export class FlashIdInfo {
     return this;
   }
 
+  public getProcessNode(): string {
+    return this.processNode;
+  }
+
   public setProcessNode(processNode: string): this {
     this.processNode = processNode;
     return this;
+  }
+
+  public getVoltage(): string {
+    return this.voltage;
   }
 
   public setVoltage(voltage: string): this {
@@ -50,8 +65,12 @@ export class FlashIdInfo {
     return this;
   }
 
-  public setExt(ext: Record<string, string>): this {
-    this.ext = ext;
+  public getExt(): Record<string, any> {
+    return { ...this.ext };
+  }
+
+  public setExt(ext: Record<string, any>): this {
+    this.ext = { ...ext };
     return this;
   }
 }

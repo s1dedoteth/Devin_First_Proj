@@ -3,6 +3,7 @@ import type { FlashInfo } from '../types/FlashInfo.js';
 import { Constants } from '../types/Constants.js';
 import { DatabaseManager } from '../database/DatabaseManager.js';
 import { FlashInfoImpl } from '../core/FlashInfoImpl.js';
+import { FlashDetector } from '../core/FlashDetector.js';
 
 export class MicronFbgaCodeDecoder extends AbstractDecoder {
   private static readonly COUNTRY_CODE: Record<string, string> = {
@@ -21,52 +22,58 @@ export class MicronFbgaCodeDecoder extends AbstractDecoder {
   };
 
   public getName(): string {
-    return Constants.VENDOR_MICRON;
+    return "MicronFBGACode";
   }
 
   public check(partNumber: string): boolean {
-    if (partNumber.length < 2) return false;
-    const prefix = partNumber.substring(0, 2);
-    return ['NW', 'NX', 'NQ', 'PF', 'NY', 'NC'].includes(prefix);
+    const prefixes = ["NW", "NX", "NQ", "PF", "NY", "NC"];
+    return prefixes.some(h => 
+      partNumber.startsWith(h) || 
+      (partNumber.length === 10 && partNumber.substring(5, 7) === h)
+    );
   }
 
-  decode(partNumber: string): FlashInfo {
-    const info = new FlashInfoImpl();
-    info.setVendor(this.getName());
-
-    // Extract FBGA code
-    const fbgaCode = partNumber.substring(0, 5);
-    const micronPn = DatabaseManager.getInstance().searchMicronFbgaCode(fbgaCode);
-    if (micronPn) {
-      info.setPartNumber(micronPn);
-    }
-
-    // Extract date code if length is 10
+  public decode(partNumber: string): FlashInfo {
+    let i = partNumber;
+    let code = partNumber;
     if (partNumber.length === 10) {
-      const dateCode = partNumber.substring(5, 7);
-      const diffusion = partNumber.charAt(7);
-      const encapsulation = partNumber.charAt(8);
-
-      // Parse production date
-      const year = dateCode.charCodeAt(0) - 64;
-      const week = (dateCode.charCodeAt(1) - 64) * 2;
-      info.setProductionDate(`20${year} Week ${week}`);
-
-      // Map country codes
-      const diffusionLocation = MicronFbgaCodeDecoder.COUNTRY_CODE[diffusion] ?? Constants.UNKNOWN;
-      const encapsulationLocation = MicronFbgaCodeDecoder.COUNTRY_CODE[encapsulation] ?? Constants.UNKNOWN;
-
-      info.setExt({
-        [Constants.DIFFUSION]: diffusionLocation,
-        [Constants.ENCAPSULATION]: encapsulationLocation,
-        [Constants.MICRON_PN]: micronPn ?? Constants.UNKNOWN
-      });
+      code = partNumber.substring(0, 5);
+      i = partNumber.substring(5);
     }
 
-    return info;
+    const pns = DatabaseManager.getInstance().searchMicronFbgaCode(code);
+    if (pns && pns.length > 0) {
+      const info = FlashDetector.detect(pns[0]);
+      info.setPartNumber(partNumber);
+
+      if (info.getVendor() === Constants.VENDOR_MICRON) {
+        const extra = info.getExt();
+        extra["micronPn"] = pns[0];
+
+        if (i.length === 5) {
+          const year = AbstractDecoder.shiftChars(i, 1);
+          const weekCode = AbstractDecoder.shiftChars(i, 1);
+          const week = ((weekCode.charCodeAt(0) - 64) * 2).toString().padStart(2, '0');
+          extra["productionDate"] = year + week;
+
+          AbstractDecoder.shiftChars(i, 1); // Skip one char
+          
+          const diffusion = AbstractDecoder.shiftChars(i, 1);
+          const encapsulation = AbstractDecoder.shiftChars(i, 1);
+          
+          extra["diffusion"] = AbstractDecoder.getOrDefault(diffusion, MicronFbgaCodeDecoder.COUNTRY_CODE);
+          extra["encapsulation"] = AbstractDecoder.getOrDefault(encapsulation, MicronFbgaCodeDecoder.COUNTRY_CODE);
+        }
+
+        info.setExt(extra);
+      }
+      return info;
+    }
+
+    return new FlashInfoImpl().setVendor(Constants.UNKNOWN);
   }
 
-  getFlashInfoFromFdb(info: FlashInfo): FlashInfo | null {
-    return this.getFlashInfoFromFdbImpl(info);
+  protected getFlashInfoFromFdb(info: FlashInfo): FlashInfo | null {
+    return null;
   }
 }

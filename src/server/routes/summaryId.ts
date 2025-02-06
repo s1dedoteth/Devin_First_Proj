@@ -1,8 +1,8 @@
-import * as Hapi from '@hapi/hapi';
+import { type ServerRoute, type Request, type ResponseToolkit } from '@hapi/hapi';
 import { DatabaseManager } from '../../database/DatabaseManager.js';
 import Joi from 'joi';
 
-export const summaryIdRoute: Hapi.ServerRoute = {
+export const summaryIdRoute: ServerRoute = {
   method: 'GET',
   path: '/summaryId',
   options: {
@@ -13,7 +13,7 @@ export const summaryIdRoute: Hapi.ServerRoute = {
       })
     }
   },
-  handler: async (request, h) => {
+  handler: async (request: Request, h: ResponseToolkit) => {
     try {
       const { id, lang } = request.query as { id: string; lang: string | null };
       const dbManager = DatabaseManager.getInstance();

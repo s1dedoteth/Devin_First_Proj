@@ -4,6 +4,7 @@ import type { FlashInfo } from '../types/FlashInfo.js';
 import type { FlashIdInfo } from '../types/FlashIdInfo.js';
 import type { FlashIdInfoExtended } from '../types/FlashIdInfoExtended.js';
 import { FlashIdInfoExtendedImpl } from '../flashid/FlashIdInfoExtendedImpl.js';
+import { FlashInfoImpl } from './FlashInfoImpl.js';
 import { AbstractDecoder } from '../decoders/AbstractDecoder.js';
 import { Constants } from '../types/Constants.js';
 import { MicronDecoder } from '../decoders/MicronDecoder.js';
@@ -55,33 +56,33 @@ export class FlashDetector {
       }
     }
 
-    return this.processors.processFlashInfo({
-      partNumber: cleanPn,
-      vendor: Constants.UNKNOWN,
-      type: Constants.UNKNOWN,
-      density: Constants.UNKNOWN,
-      deviceWidth: 0,
-      cellLevel: Constants.UNKNOWN,
-      processNode: Constants.UNKNOWN,
-      generation: Constants.UNKNOWN,
-      interface: {
-        toggle: false,
-        async: false,
-        sync: false
-      },
-      classification: {
-        ce: Constants.UNKNOWN_PROP,
-        ch: Constants.UNKNOWN_PROP,
-        die: Constants.UNKNOWN_PROP,
-        rb: Constants.UNKNOWN_PROP
-      },
-      voltage: Constants.UNKNOWN,
-      package: Constants.UNKNOWN,
-      controller: [],
-      remark: '',
-      extraInfo: {},
-      flashId: []
-    });
+    const info = new FlashInfoImpl();
+    info.setPartNumber(cleanPn)
+        .setVendor(Constants.UNKNOWN)
+        .setType(Constants.UNKNOWN)
+        .setDensity(Constants.UNKNOWN)
+        .setDeviceWidth(0)
+        .setCellLevel(Constants.UNKNOWN)
+        .setProcessNode(Constants.UNKNOWN)
+        .setGeneration(Constants.UNKNOWN)
+        .setInterface({
+          toggle: false,
+          async: false,
+          sync: false
+        })
+        .setClassification({
+          ce: Constants.UNKNOWN_PROP,
+          ch: Constants.UNKNOWN_PROP,
+          die: Constants.UNKNOWN_PROP,
+          rb: Constants.UNKNOWN_PROP
+        })
+        .setVoltage(Constants.UNKNOWN)
+        .setPackage(Constants.UNKNOWN)
+        .setController([])
+        .setRemark('')
+        .setExt({})
+        .setFlashId([]);
+    return this.processors.processFlashInfo(info);
   }
 
   public static decodeFlashId(id: string): FlashIdInfoExtended {
@@ -98,27 +99,18 @@ export class FlashDetector {
         .setExt({});
 
     if (flashId) {
-      info.s = flashId.s;
-      info.p = flashId.p;
-      info.b = flashId.b;
-      info.t = flashId.t;
-      info.n = flashId.n;
-      info.setDie(flashId.s)
-          .setPlane(flashId.p)
-          .setPageSize(flashId.s)
-          .setBlockSize(flashId.b)
-          .setControllers(flashId.t)
-          .setPartNumbers(flashId.n);
+      const ext = flashId.getExt();
+      info.setDie(ext.die as string)
+          .setPlane(ext.plane as string)
+          .setPageSize(ext.pageSize as string)
+          .setBlockSize(ext.blockSize as string)
+          .setControllers(ext.controllers as string[])
+          .setPartNumbers(ext.partNumbers as string[]);
     } else {
-      info.s = -1;
-      info.p = -1;
-      info.b = -1;
-      info.t = [];
-      info.n = [];
-      info.setDie(Constants.UNKNOWN_PROP)
-          .setPlane(Constants.UNKNOWN_PROP)
-          .setPageSize(Constants.UNKNOWN_PROP)
-          .setBlockSize(Constants.UNKNOWN_PROP)
+      info.setDie(String(Constants.UNKNOWN_PROP))
+          .setPlane(String(Constants.UNKNOWN_PROP))
+          .setPageSize(String(Constants.UNKNOWN_PROP))
+          .setBlockSize(String(Constants.UNKNOWN_PROP))
           .setControllers([])
           .setPartNumbers([]);
     }

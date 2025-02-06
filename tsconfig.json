@@ -9,8 +9,24 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "composite": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "*": ["src/*"]
+    }
   },
-  "include": ["src/**/*"],
+  "include": [
+    "src/**/*",
+    "src/**/*.json",
+    "src/database/*.ts",
+    "src/utils/*.ts",
+    "src/fdbgen/**/*.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

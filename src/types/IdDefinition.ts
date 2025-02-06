@@ -1,9 +1,14 @@
+import { DensityUnit } from './Constants.js';
+
+export interface IdRule {
+  dq: number[];
+  def: Record<number, string | number | DensityUnit>;
+}
+
+export interface IdRules {
+  [name: string]: IdRule;
+}
+
 export interface IdDefinition {
-  id: string;
-  vendor: string;
-  cellLevel: string;
-  density: string;
-  processNode: string;
-  voltage: string;
-  ext: Record<string, string>;
+  [key: string]: IdRules;
 }

@@ -1,4 +1,4 @@
-import type { FlashIdInfo, FlashIdInfoRaw } from './FlashIdInfo.js';
+import type { FlashIdInfo } from './FlashIdInfo.js';
 
 export type VendorInfo = {
   id: string[];  // Flash Id
@@ -21,8 +21,8 @@ export type DatabaseInfo = {
 }
 
 export interface Iddb {
-  getFlashId(id: string): FlashIdInfoRaw | null;
-  getFlashIds(): Record<string, FlashIdInfoRaw>;
+  getFlashId(id: string): FlashIdInfo | null;
+  getFlashIds(): Record<string, FlashIdInfo>;
 }
 
 export interface Vendor {

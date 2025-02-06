@@ -26,9 +26,21 @@ export class FlashInfoImpl implements FlashInfo {
   public package: string = '';
   public controller: string[] = [];
   public remark: string = '';
-  public extraInfo: Record<string, string> = {};
+  public extraInfo: Record<string, any> = {};
   public flashId: string[] = [];
   public productionDate?: string;
+
+  public getVendor(): string {
+    return this.vendor;
+  }
+
+  public getPartNumber(): string {
+    return this.partNumber;
+  }
+
+  public getExt(): Record<string, any> {
+    return { ...this.extraInfo };
+  }
 
   public setPartNumber(partNumber: string): this {
     this.partNumber = partNumber;

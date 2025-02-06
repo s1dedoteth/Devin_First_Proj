@@ -1,8 +1,8 @@
-import * as Hapi from '@hapi/hapi';
+import { type ServerRoute, type Request, type ResponseToolkit } from '@hapi/hapi';
 import { DatabaseManager } from '../../database/DatabaseManager.js';
 import Joi from 'joi';
 
-export const searchPnRoute: Hapi.ServerRoute = {
+export const searchPnRoute: ServerRoute = {
   method: 'GET',
   path: '/searchPn',
   options: {
@@ -14,7 +14,7 @@ export const searchPnRoute: Hapi.ServerRoute = {
       })
     }
   },
-  handler: async (request, h) => {
+  handler: async (request: Request, h: ResponseToolkit) => {
     try {
       const { pn, partMatch, limit } = request.query as { pn: string; partMatch: boolean; limit: number };
       const dbManager = DatabaseManager.getInstance();

@@ -1,8 +1,8 @@
-import * as Hapi from '@hapi/hapi';
+import { type ServerRoute, type Request, type ResponseToolkit } from '@hapi/hapi';
 import { FlashDetector } from '../../core/FlashDetector.js';
 import Joi from 'joi';
 
-export const decodeRoute: Hapi.ServerRoute = {
+export const decodeRoute: ServerRoute = {
   method: 'GET',
   path: '/decode',
   options: {
@@ -12,7 +12,7 @@ export const decodeRoute: Hapi.ServerRoute = {
       })
     }
   },
-  handler: async (request, h) => {
+  handler: async (request: Request, h: ResponseToolkit) => {
     try {
       const { pn } = request.query as { pn: string };
       const info = FlashDetector.detect(pn);
