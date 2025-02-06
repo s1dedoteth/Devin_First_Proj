@@ -1,0 +1,20 @@
+{
+  "name": "flash-detector-ts",
+  "version": "1.0.0",
+  "description": "Flash memory decoder in TypeScript",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server/index.js"
+  },
+  "dependencies": {
+    "@hapi/hapi": "^21.3.2",
+    "joi": "^17.11.0"
+  },
+  "devDependencies": {
+    "@types/hapi__hapi": "^21.0.0",
+    "@types/node": "^20.10.4",
+    "typescript": "^5.3.3"
+  }
+}
