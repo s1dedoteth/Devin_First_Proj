@@ -2,6 +2,7 @@ import { Generator } from './Generator.js';
 import { Logger } from '../utils/Logger.js';
 import { Fdb } from '../database/Fdb.js';
 import { Extra } from './generators/Extra.js';
+import { VendorInfo } from '../types/Database.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -17,16 +18,17 @@ export class FDBGen {
     Logger.debug(`Registered generator: ${dirName}`);
   }
 
-  public static init(): void {
-    // Full Flash Database
+  public static async init(): Promise<void> {
     const generatorPath = path.join(__dirname, 'generators');
     const generatorFiles = fs.readdirSync(generatorPath);
     
-    for (const file of generatorFiles) {
-      if (file.endsWith('.js')) {
+    const loadPromises = generatorFiles
+      .filter(file => file.endsWith('.js'))
+      .map(async (file) => {
         try {
-          // eslint-disable-next-line @typescript-eslint/no-var-requires
-          const generator = require(path.join(generatorPath, file)).default;
+          const modulePath = `file://${path.join(generatorPath, file)}`;
+          const module = await import(modulePath);
+          const generator = module.default;
           if (generator && generator.prototype instanceof Generator) {
             this.registerGenerator(generator);
             Logger.debug(`Loaded generator: ${generator.getDirName()}`);
@@ -34,11 +36,12 @@ export class FDBGen {
         } catch (error) {
           Logger.error(`Failed to load generator ${file}: ${error}`);
         }
-      }
-    }
+      });
+
+    await Promise.all(loadPromises);
   }
 
-  public static generate(version: string, dbPath: string, extra: boolean = false): Record<string, any> {
+  public static async generate(version: string, dbPath: string, extra = false): Promise<Record<string, unknown>> {
     if (!dbPath.endsWith(path.sep)) {
       dbPath += path.sep;
     }
@@ -82,9 +85,16 @@ export class FDBGen {
     Logger.debug("Add Part Numbers to IDDB");
     const iddb = fdb.getIddb();
     for (const vendor of fdb.getVendors()) {
-      for (const partNumber of vendor.getPartNumbers()) {
-        for (const id of partNumber.getFlashIds()) {
-          iddb.getFlashId(id, true).addPartNumber(`${vendor.getName()} ${partNumber.getPartNumber()}`);
+      const partNumbers = vendor.getPartNumbers();
+      const entries = Object.entries(partNumbers);
+      for (const [partNumber, info] of entries) {
+        const vendorInfo = info as unknown as VendorInfo;
+        if (!vendorInfo || !Array.isArray(vendorInfo.id) || !vendorInfo.id.length) {
+          Logger.error(`Invalid vendor info for ${partNumber}: missing or invalid id array`);
+          continue;
+        }
+        for (const id of vendorInfo.id) {
+          iddb.getFlashId(id, true).addPartNumber(`${vendor.getName()} ${partNumber}`);
         }
       }
     }
