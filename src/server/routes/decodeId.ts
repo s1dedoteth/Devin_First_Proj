@@ -1,4 +1,4 @@
-import { ServerRoute } from '@hapi/hapi';
+import type { ServerRoute, Request, ResponseToolkit } from '@hapi/hapi';
 import { FlashDetector } from '../../core/FlashDetector.js';
 import Joi from 'joi';
 

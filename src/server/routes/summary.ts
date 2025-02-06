@@ -1,4 +1,4 @@
-import type { ServerRoute } from '@hapi/hapi';
+import type { ServerRoute, Request, ResponseToolkit } from '@hapi/hapi';
 import { DatabaseManager } from '../../database/DatabaseManager.js';
 import Joi from 'joi';
 
