@@ -1,4 +1,4 @@
-import Hapi from '@hapi/hapi';
+import * as Hapi from '@hapi/hapi';
 import { routes } from './routes/index.js';
 import { DatabaseManager } from '../database/DatabaseManager.js';
 import { ProcessorManager } from '../processors/ProcessorManager.js';
