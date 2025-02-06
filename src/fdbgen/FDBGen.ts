@@ -86,10 +86,9 @@ export class FDBGen {
     const iddb = fdb.getIddb();
     for (const vendor of fdb.getVendors()) {
       const partNumbers = vendor.getPartNumbers();
-      const entries = Object.entries(partNumbers);
-      for (const [partNumber, info] of entries) {
+      for (const [partNumber, info] of Object.entries(partNumbers)) {
         const vendorInfo = info as unknown as VendorInfo;
-        if (!vendorInfo || !Array.isArray(vendorInfo.id) || !vendorInfo.id.length) {
+        if (!vendorInfo || !Array.isArray(vendorInfo.id)) {
           Logger.error(`Invalid vendor info for ${partNumber}: missing or invalid id array`);
           continue;
         }
