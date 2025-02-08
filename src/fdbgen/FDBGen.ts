@@ -2,46 +2,49 @@ import { Generator } from './Generator.js';
 import { Logger } from '../utils/Logger.js';
 import { Fdb } from '../database/Fdb.js';
 import { Extra } from './generators/Extra.js';
-import { VendorInfo } from '../types/Database.js';
+import { SiliconMotionForceFlash } from './generators/SiliconMotionForceFlash.js';
+import { SiliconMotionUFD } from './generators/SiliconMotionUFD.js';
+import { SiliconMotionSSD } from './generators/SiliconMotionSSD.js';
+import { JMicron } from './generators/JMicron.js';
+import { Maxiotek } from './generators/Maxiotek.js';
+import { Maxio } from './generators/Maxio.js';
+import { SandForce } from './generators/SandForce.js';
+import { AlcorMicro } from './generators/AlcorMicro.js';
+import { ChipsBank } from './generators/ChipsBank.js';
+import { Innostor } from './generators/Innostor.js';
+import { PhisonSSD } from './generators/PhisonSSD.js';
 import path from 'node:path';
 import fs from 'node:fs';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export class FDBGen {
   private static generators: Map<string, typeof Generator> = new Map();
 
   public static registerGenerator(generatorClass: typeof Generator): void {
-    const dirName = generatorClass.getDirName().toLowerCase();
-    this.generators.set(dirName, generatorClass);
-    Logger.debug(`Registered generator: ${dirName}`);
+    if (generatorClass.prototype instanceof Generator) {
+      this.generators.set(generatorClass.getDirName().toLowerCase(), generatorClass);
+    }
   }
 
-  public static async init(): Promise<void> {
-    const generatorPath = path.join(__dirname, 'generators');
-    const generatorFiles = fs.readdirSync(generatorPath);
-    
-    const loadPromises = generatorFiles
-      .filter(file => file.endsWith('.js'))
-      .map(async (file) => {
-        try {
-          const modulePath = `file://${path.join(generatorPath, file)}`;
-          const module = await import(modulePath);
-          const generator = module.default;
-          if (generator && generator.prototype instanceof Generator) {
-            this.registerGenerator(generator);
-            Logger.debug(`Loaded generator: ${generator.getDirName()}`);
-          }
-        } catch (error) {
-          Logger.error(`Failed to load generator ${file}: ${error}`);
-        }
-      });
-
-    await Promise.all(loadPromises);
+  public static init(): void {
+    // Full Flash Database
+    this.registerGenerator(SiliconMotionForceFlash);
+    // Have 6Bytes FlashId
+    this.registerGenerator(SiliconMotionUFD);
+    this.registerGenerator(SiliconMotionSSD);
+    // May not have complete FlashId
+    this.registerGenerator(JMicron);
+    this.registerGenerator(Maxiotek);
+    this.registerGenerator(Maxio);
+    // No flash id
+    this.registerGenerator(SandForce);
+    this.registerGenerator(AlcorMicro);
+    // Unreliable Part Number
+    this.registerGenerator(ChipsBank);
+    this.registerGenerator(Innostor);
+    this.registerGenerator(PhisonSSD);
   }
 
-  public static async generate(version: string, dbPath: string, extra = false): Promise<Record<string, unknown>> {
+  public static generate(version: string, dbPath: string, extra = false): Record<string, unknown> {
     if (!dbPath.endsWith(path.sep)) {
       dbPath += path.sep;
     }
@@ -87,12 +90,11 @@ export class FDBGen {
     for (const vendor of fdb.getVendors()) {
       const partNumbers = vendor.getPartNumbers();
       for (const [partNumber, info] of Object.entries(partNumbers)) {
-        const vendorInfo = info as unknown as { id: string[] };
-        if (!vendorInfo?.id?.length || !Array.isArray(vendorInfo.id)) {
+        if (!info || !Array.isArray(info.id) || !info.id.length) {
           Logger.error(`Invalid vendor info for ${partNumber}: missing or invalid id array`);
           continue;
         }
-        for (const id of vendorInfo.id) {
+        for (const id of info.id) {
           iddb.getFlashId(id, true).addPartNumber(`${vendor.getName()} ${partNumber}`);
         }
       }
