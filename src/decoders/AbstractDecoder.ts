@@ -6,7 +6,7 @@ import { PartNumberInfo } from '../types/Database.js';
 export abstract class AbstractDecoder {
   public abstract check(pn: string): boolean;
 
-  protected constructor(
+  constructor(
     protected readonly vendor: string,
     protected readonly type: string,
     protected readonly processNode: string,
