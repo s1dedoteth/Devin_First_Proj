@@ -1,7 +1,7 @@
 import type { FlashIdInfo } from './FlashIdInfo.js';
 
 export interface PartNumberInfo {
-  id?: string[];  // Flash IDs
+  id: string[];  // Flash IDs
   l?: string;    // Process node
   c?: string;    // Cell level
   v?: string;    // Voltage
@@ -21,7 +21,6 @@ export interface PartNumberInfo {
   bs?: number;   // Block Size
   ts?: number;   // Total Size
   ext?: Record<string, unknown>;  // Extra Info
-  flashId?: string[];  // Alias for id
 }
 
 export type VendorInfo = PartNumberInfo;
