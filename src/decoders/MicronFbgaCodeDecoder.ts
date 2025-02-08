@@ -6,6 +6,10 @@ import { FlashInfoImpl } from '../core/FlashInfoImpl.js';
 import { FlashDetector } from '../core/FlashDetector.js';
 
 export class MicronFbgaCodeDecoder extends AbstractDecoder {
+  constructor() {
+    super('Micron', 'NAND', '20nm', 'MLC', '3.3V', { ce: 1, ch: 1, die: 1, rb: 1 });
+  }
+
   private static readonly COUNTRY_CODE: Record<string, string> = {
     '1': Constants.USA,
     '2': Constants.SINGAPORE,
@@ -43,37 +47,74 @@ export class MicronFbgaCodeDecoder extends AbstractDecoder {
 
     const pns = DatabaseManager.getInstance().searchMicronFbgaCode(code);
     if (pns && pns.length > 0) {
-      const info = FlashDetector.detect(pns[0]);
-      info.setPartNumber(partNumber);
+      const decodedInfo = FlashDetector.getInstance().decode(pns[0]);
+      if (decodedInfo !== null) {
+        decodedInfo.setPartNumber(partNumber);
 
-      if (info.getVendor() === Constants.VENDOR_MICRON) {
-        const extra = info.getExt();
-        extra["micronPn"] = pns[0];
+        if (decodedInfo.getVendor() === Constants.VENDOR_MICRON) {
+          const extra = decodedInfo.getExt();
+          extra["micronPn"] = pns[0];
 
-        if (i.length === 5) {
-          const year = AbstractDecoder.shiftChars(i, 1);
-          const weekCode = AbstractDecoder.shiftChars(i, 1);
-          const week = ((weekCode.charCodeAt(0) - 64) * 2).toString().padStart(2, '0');
-          extra["productionDate"] = year + week;
+          if (i.length === 5) {
+            const chars = i.split("");
+            const year = chars.splice(0, 1).join("");
+            const weekCode = chars.splice(0, 1).join("");
+            const week = ((weekCode.charCodeAt(0) - 64) * 2).toString().padStart(2, '0');
+            extra["productionDate"] = year + week;
 
-          AbstractDecoder.shiftChars(i, 1); // Skip one char
-          
-          const diffusion = AbstractDecoder.shiftChars(i, 1);
-          const encapsulation = AbstractDecoder.shiftChars(i, 1);
-          
-          extra["diffusion"] = AbstractDecoder.getOrDefault(diffusion, MicronFbgaCodeDecoder.COUNTRY_CODE);
-          extra["encapsulation"] = AbstractDecoder.getOrDefault(encapsulation, MicronFbgaCodeDecoder.COUNTRY_CODE);
+            chars.splice(0, 1); // Skip one char
+            
+            const diffusion = chars.splice(0, 1).join("");
+            const encapsulation = chars.splice(0, 1).join("");
+            
+            if (diffusion in MicronFbgaCodeDecoder.COUNTRY_CODE) {
+              extra["diffusion"] = MicronFbgaCodeDecoder.COUNTRY_CODE[diffusion];
+            }
+            if (encapsulation in MicronFbgaCodeDecoder.COUNTRY_CODE) {
+              extra["encapsulation"] = MicronFbgaCodeDecoder.COUNTRY_CODE[encapsulation];
+            }
+          }
+
+          decodedInfo.setExt(extra);
         }
-
-        info.setExt(extra);
+        return decodedInfo;
       }
-      return info;
     }
 
     return new FlashInfoImpl().setVendor(Constants.UNKNOWN);
   }
 
-  protected getFlashInfoFromFdb(info: FlashInfo): FlashInfo | null {
+  public getFlashInfoFromFdb(info: FlashInfo): FlashInfo | null {
+    const pn = info.getPartNumber();
+    const pns = pn.split("-");
+    if (pns.length === 2) {
+      const decodedInfo = FlashDetector.getInstance().decode(pns[0]);
+      if (decodedInfo !== null) {
+        const extra = decodedInfo.getExt();
+        const chars = pns[1].split("");
+
+        if (chars.length >= 5) {
+          const year = chars.splice(0, 1).join("");
+          const weekCode = chars.splice(0, 1).join("");
+          if (weekCode >= "1" && weekCode <= "9") {
+            extra["week"] = weekCode;
+          }
+          chars.splice(0, 1); // Skip one char
+
+          const diffusion = chars.splice(0, 1).join("");
+          const encapsulation = chars.splice(0, 1).join("");
+
+          if (diffusion in MicronFbgaCodeDecoder.COUNTRY_CODE) {
+            extra["diffusion"] = MicronFbgaCodeDecoder.COUNTRY_CODE[diffusion];
+          }
+          if (encapsulation in MicronFbgaCodeDecoder.COUNTRY_CODE) {
+            extra["encapsulation"] = MicronFbgaCodeDecoder.COUNTRY_CODE[encapsulation];
+          }
+        }
+
+        return decodedInfo;
+      }
+    }
     return null;
   }
 }
