@@ -5,10 +5,20 @@ export class FlashIdInfo {
   private density: string = '';
   private processNode: string = '';
   private voltage: string = '';
-  private ext: Record<string, any> = {};
+  protected ext: Record<string, any> = {};
+  protected _id: string;
 
   constructor(id: number) {
-    // Initialize with empty values
+    this._id = id.toString(16).toUpperCase().padStart(2, '0');
+  }
+
+  public get id(): string {
+    return this._id;
+  }
+
+  public setId(id: string): this {
+    this._id = id;
+    return this;
   }
 
   public getType(): string {
