@@ -156,10 +156,11 @@ export class SKHynixDecoder extends FlashIdDecoder {
 
   public decode(id: number): FlashIdInfo {
     const info = super.decode(id);
-    const spp = info.getExt()["simultaneouslyProgrammedPages"];
-    if (spp) {
+    const ext = info.getExt();
+    const spp = ext["simultaneouslyProgrammedPages"];
+    if (typeof spp === 'string') {
       info.setExt({
-        ...info.getExt(),
+        ...ext,
         "simultaneouslyProgrammedPages": parseInt(spp, 10)
       });
     }
