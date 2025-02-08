@@ -84,4 +84,25 @@ export class PartNumberInfoImpl implements PartNumberInfo {
   public getCh(): number {
     return this._n ?? -1;
   }
+
+  public toJSON(): any {
+    const json: any = {};
+    if (this._id.length > 0) json.id = this._id;
+    if (this._l) json.l = this._l;
+    if (this._c) json.c = this._c;
+    if (this._v) json.v = this._v;
+    if (this._i) json.i = this._i;
+    if (this._t.length > 0) json.t = this._t;
+    if (this._m) json.m = this._m;
+    if (this._d !== undefined) json.d = this._d;
+    if (this._e !== undefined) json.e = this._e;
+    if (this._r !== undefined) json.r = this._r;
+    if (this._n !== undefined) json.n = this._n;
+    if (this._p !== undefined) json.p = this._p;
+    if (this._ps !== undefined) json.ps = this._ps;
+    if (this._bs !== undefined) json.bs = this._bs;
+    if (this._ts !== undefined) json.ts = this._ts;
+    if (this._ext) json.ext = this._ext;
+    return json;
+  }
 }

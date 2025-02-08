@@ -11,6 +11,7 @@ export interface PartNumberInfo {
   getCe(): number;
   getRb(): number;
   getCh(): number;
+  toJSON(): any;
 }
 
 export type VendorInfo = PartNumberInfo;
@@ -24,7 +25,7 @@ export type DatabaseInfo = {
 }
 
 export interface Iddb {
-  getFlashId(id: string): FlashIdInfo | null;
+  getFlashId(id: string, create?: boolean): FlashIdInfo;
   getFlashIds(): Record<string, FlashIdInfo>;
 }
 
@@ -39,4 +40,5 @@ export interface FlashDatabase {
   micron?: Record<string, string>;
   getVendors(): Vendor[];
   getVendor(name: string): Vendor | null;
+  toJSON(): any;
 }
