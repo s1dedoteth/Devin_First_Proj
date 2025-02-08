@@ -90,11 +90,16 @@ export class FDBGen {
     for (const vendor of fdb.getVendors()) {
       const partNumbers = vendor.getPartNumbers();
       for (const [partNumber, info] of Object.entries(partNumbers)) {
-        if (!info || !Array.isArray(info.id) || !info.id.length) {
+        if (!info) {
+          Logger.error(`Invalid vendor info for ${partNumber}: info is null or undefined`);
+          continue;
+        }
+        const flashIds = info.id || info.flashId || [];
+        if (!Array.isArray(flashIds) || !flashIds.length) {
           Logger.error(`Invalid vendor info for ${partNumber}: missing or invalid id array`);
           continue;
         }
-        for (const id of info.id) {
+        for (const id of flashIds) {
           iddb.getFlashId(id, true).addPartNumber(`${vendor.getName()} ${partNumber}`);
         }
       }
