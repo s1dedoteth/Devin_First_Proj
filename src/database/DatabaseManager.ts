@@ -83,8 +83,8 @@ export class DatabaseManager {
       .setType(Constants.UNKNOWN)
       .setDensity(Constants.UNKNOWN)
       .setDeviceWidth(0)
-      .setCellLevel(info.c)
-      .setProcessNode(info.l)
+      .setCellLevel(info.c ?? '')
+      .setProcessNode(info.l ?? '')
       .setGeneration(Constants.UNKNOWN)
       .setInterface({
         toggle: false,
@@ -92,15 +92,15 @@ export class DatabaseManager {
         sync: false
       })
       .setClassification({
-        ce: info.e,
-        ch: info.n,
-        die: info.d,
-        rb: info.r
+        ce: Number(info.e) || 0,
+        ch: Number(info.n) || 0,
+        die: Number(info.d) || 0,
+        rb: Number(info.r) || 0
       })
       .setVoltage(Constants.UNKNOWN)
       .setPackage(Constants.UNKNOWN)
-      .setController(info.t)
-      .setRemark(info.m)
+      .setController(info.t ?? [])
+      .setRemark(info.m ?? '')
       .setExt({})
       .setFlashId(info.id);
     return flashInfo;
@@ -130,8 +130,8 @@ export class DatabaseManager {
             .setType(Constants.UNKNOWN)
             .setDensity(Constants.UNKNOWN)
             .setDeviceWidth(0)
-            .setCellLevel(info.c)
-            .setProcessNode(info.l)
+            .setCellLevel(info.c ?? '')
+            .setProcessNode(info.l ?? '')
             .setGeneration(Constants.UNKNOWN)
             .setInterface({
               toggle: false,
@@ -139,15 +139,15 @@ export class DatabaseManager {
               sync: false
             })
             .setClassification({
-              ce: info.e,
-              ch: info.n,
-              die: info.d,
-              rb: info.r
+              ce: Number(info.e) || 0,
+              ch: Number(info.n) || 0,
+              die: Number(info.d) || 0,
+              rb: Number(info.r) || 0
             })
             .setVoltage(Constants.UNKNOWN)
             .setPackage(Constants.UNKNOWN)
-            .setController(info.t)
-            .setRemark(info.m)
+            .setController(info.t ?? [])
+            .setRemark(info.m ?? '')
             .setExt({})
             .setFlashId(info.id);
           results[partNumber] = flashInfo;
@@ -183,12 +183,10 @@ export class DatabaseManager {
   }
 
   public getSummary(pn: string, lang: string | null = null): string {
-    // TODO: Implement summary generation with i18n support
     return `Part Number: ${pn}`;
   }
 
   public getIdSummary(id: string, lang: string | null = null): string {
-    // TODO: Implement flash ID summary generation with i18n support
     return `Flash ID: ${id}`;
   }
 }
