@@ -1,122 +1,59 @@
+import { FlashIdInfo } from './FlashIdInfo.js';
 import type { FlashIdInfoExtended } from '../types/FlashIdInfoExtended.js';
-import type { FlashIdInfo } from '../types/FlashIdInfo.js';
-import { DensityUnit } from '../types/Constants.js';
 
-export class FlashIdInfoExtendedImpl implements FlashIdInfoExtended {
-  private _type: string = '';
-  private _vendor: string = '';
-  private _cellLevel: string = '';
-  private _density: string = '';
-  private _processNode: string = '';
-  private _voltage: string = '';
-  private _ext: Record<string, any> = {};
-  public id: string = '';
-  public die: number = -1;
-  public plane: number = -1;
-  public pageSize: number = -1;
-  public blockSize: number = -1;
-  public controllers: string[] = [];
-  public partNumbers: string[] = [];
+export class FlashIdInfoExtendedImpl extends FlashIdInfo implements FlashIdInfoExtended {
+  private _id: string = '';
+  private _die: number = 0;
+  private _plane: number = 0;
+  private _pageSize: number = 0;
+  private _blockSize: number = 0;
+  private _controllers: string[] = [];
+  private _partNumbers: string[] = [];
 
   constructor(id: number) {
-    this.id = id.toString(16).toUpperCase().padStart(2, '0');
+    super(id);
   }
 
-  public getType(): string {
-    return this._type;
-  }
-
-  public setType(type: string): this {
-    this._type = type;
-    return this;
-  }
-
-  public getVendor(): string {
-    return this._vendor;
-  }
-
-  public setVendor(vendor: string): this {
-    this._vendor = vendor;
-    return this;
-  }
-
-  public getCellLevel(): string {
-    return this._cellLevel;
-  }
-
-  public setCellLevel(cellLevel: string): this {
-    this._cellLevel = cellLevel;
-    return this;
-  }
-
-  public getDensity(): string {
-    return this._density;
-  }
-
-  public setDensity(density: string | DensityUnit): this {
-    this._density = typeof density === 'string' ? density : density.toString();
-    return this;
-  }
-
-  public getProcessNode(): string {
-    return this._processNode;
-  }
-
-  public setProcessNode(processNode: string): this {
-    this._processNode = processNode;
-    return this;
-  }
-
-  public getVoltage(): string {
-    return this._voltage;
-  }
-
-  public setVoltage(voltage: string): this {
-    this._voltage = voltage;
-    return this;
-  }
-
-  public getExt(): Record<string, any> {
-    return { ...this._ext };
-  }
-
-  public setExt(ext: Record<string, any>): this {
-    this._ext = { ...ext };
-    return this;
-  }
+  public get id(): string { return this._id; }
+  public get die(): number { return this._die; }
+  public get plane(): number { return this._plane; }
+  public get pageSize(): number { return this._pageSize; }
+  public get blockSize(): number { return this._blockSize; }
+  public get controllers(): string[] { return this._controllers; }
+  public get partNumbers(): string[] { return this._partNumbers; }
 
   public setId(id: string): this {
-    this.id = id;
+    this._id = id;
     return this;
   }
 
   public setDie(die: string): this {
-    this.die = parseInt(die) || -1;
+    this._die = parseInt(die, 10) || 0;
     return this;
   }
 
   public setPlane(plane: string): this {
-    this.plane = parseInt(plane) || -1;
+    this._plane = parseInt(plane, 10) || 0;
     return this;
   }
 
   public setPageSize(pageSize: string): this {
-    this.pageSize = parseInt(pageSize) || -1;
+    this._pageSize = parseInt(pageSize, 10) || 0;
     return this;
   }
 
   public setBlockSize(blockSize: string | null): this {
-    this.blockSize = blockSize ? parseInt(blockSize) : -1;
+    this._blockSize = blockSize ? parseInt(blockSize, 10) : 0;
     return this;
   }
 
   public setControllers(controllers: string[]): this {
-    this.controllers = controllers;
+    this._controllers = controllers;
     return this;
   }
 
   public setPartNumbers(partNumbers: string[]): this {
-    this.partNumbers = partNumbers;
+    this._partNumbers = partNumbers;
     return this;
   }
 }
