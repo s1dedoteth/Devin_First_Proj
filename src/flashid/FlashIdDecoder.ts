@@ -1,5 +1,5 @@
-import { FlashIdInfo, FlashIdInfoImpl } from '../types/FlashIdInfo.js';
-
+import { FlashIdInfo } from '../types/FlashIdInfo.js';
+import { FlashIdInfoImpl } from './FlashIdInfoImpl.js';
 import { IdRule, IdRules, IdDefinition } from '../types/IdDefinition.js';
 
 export abstract class FlashIdDecoder {

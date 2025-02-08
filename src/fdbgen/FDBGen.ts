@@ -94,7 +94,7 @@ export class FDBGen {
           Logger.error(`Invalid vendor info for ${partNumber}: info is null or undefined`);
           continue;
         }
-        const flashIds = info.id;
+        const flashIds = info.getFlashIds();
         if (!Array.isArray(flashIds) || !flashIds.length) {
           Logger.error(`Invalid vendor info for ${partNumber}: missing or invalid id array`);
           continue;

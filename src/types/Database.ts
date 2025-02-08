@@ -1,26 +1,16 @@
 import type { FlashIdInfo } from './FlashIdInfo.js';
 
 export interface PartNumberInfo {
-  id: string[];  // Flash IDs
-  l?: string;    // Process node
-  c?: string;    // Cell level
-  v?: string;    // Voltage
-  i?: {         // Interface
-    async: boolean;
-    sync: boolean;
-    toggle: boolean;
-  };
-  t?: string[];  // Controllers
-  m?: string;    // Additional Info
-  d?: number;    // Die
-  e?: number;    // CE
-  r?: number;    // Rb
-  n?: number;    // Channel
-  p?: number;    // Plane
-  ps?: number;   // Page Size
-  bs?: number;   // Block Size
-  ts?: number;   // Total Size
-  ext?: Record<string, unknown>;  // Extra Info
+  getPartNumber(): string;
+  getFlashIds(): string[];
+  getProcessNode(): string;
+  getCellLevel(): string;
+  getControllers(): string[];
+  getRemark(): string;
+  getDie(): number;
+  getCe(): number;
+  getRb(): number;
+  getCh(): number;
 }
 
 export type VendorInfo = PartNumberInfo;

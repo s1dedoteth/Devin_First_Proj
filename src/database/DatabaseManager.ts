@@ -1,4 +1,5 @@
 import type { FlashDatabase, DatabaseInfo, Iddb, Vendor, VendorInfo } from '../types/Database.js';
+import { PartNumberInfoImpl } from './PartNumberInfoImpl.js';
 import type { FlashIdInfo } from '../types/FlashIdInfo.js';
 import type { FlashInfo } from '../types/FlashInfo.js';
 import { Constants } from '../types/Constants.js';
@@ -70,7 +71,8 @@ export class DatabaseManager {
     if (!v) return null;
     
     const partNumbers = v.getPartNumbers();
-    return partNumbers[partNumber] || null;
+    const info = partNumbers[partNumber];
+    return info ? new PartNumberInfoImpl(partNumber, info) : null;
   }
 
   public getPartNumber(vendor: string, partNumber: string): FlashInfo | null {
@@ -83,8 +85,8 @@ export class DatabaseManager {
       .setType(Constants.UNKNOWN)
       .setDensity(Constants.UNKNOWN)
       .setDeviceWidth(0)
-      .setCellLevel(info.c ?? '')
-      .setProcessNode(info.l ?? '')
+      .setCellLevel(info.getCellLevel())
+      .setProcessNode(info.getProcessNode())
       .setGeneration(Constants.UNKNOWN)
       .setInterface({
         toggle: false,
@@ -92,17 +94,17 @@ export class DatabaseManager {
         sync: false
       })
       .setClassification({
-        ce: Number(info.e) || 0,
-        ch: Number(info.n) || 0,
-        die: Number(info.d) || 0,
-        rb: Number(info.r) || 0
+        ce: info.getCe(),
+        ch: info.getCh(),
+        die: info.getDie(),
+        rb: info.getRb()
       })
       .setVoltage(Constants.UNKNOWN)
       .setPackage(Constants.UNKNOWN)
-      .setController(info.t ?? [])
-      .setRemark(info.m ?? '')
+      .setController(info.getControllers())
+      .setRemark(info.getRemark())
       .setExt({})
-      .setFlashId(info.id);
+      .setFlashId(info.getFlashIds());
     return flashInfo;
   }
 
@@ -122,16 +124,17 @@ export class DatabaseManager {
     const vendors = this.database.getVendors();
     for (const vendor of vendors) {
       const partNumbers = vendor.getPartNumbers();
-      for (const [partNumber, info] of Object.entries(partNumbers)) {
+      for (const [partNumber, rawInfo] of Object.entries(partNumbers)) {
         if (partMatch ? partNumber.includes(pn) : partNumber === pn) {
+          const info = new PartNumberInfoImpl(partNumber, rawInfo);
           const flashInfo = new FlashInfoImpl();
           flashInfo.setPartNumber(partNumber)
             .setVendor(vendor.getName())
             .setType(Constants.UNKNOWN)
             .setDensity(Constants.UNKNOWN)
             .setDeviceWidth(0)
-            .setCellLevel(info.c ?? '')
-            .setProcessNode(info.l ?? '')
+            .setCellLevel(info.getCellLevel())
+            .setProcessNode(info.getProcessNode())
             .setGeneration(Constants.UNKNOWN)
             .setInterface({
               toggle: false,
@@ -139,17 +142,17 @@ export class DatabaseManager {
               sync: false
             })
             .setClassification({
-              ce: Number(info.e) || 0,
-              ch: Number(info.n) || 0,
-              die: Number(info.d) || 0,
-              rb: Number(info.r) || 0
+              ce: info.getCe(),
+              ch: info.getCh(),
+              die: info.getDie(),
+              rb: info.getRb()
             })
             .setVoltage(Constants.UNKNOWN)
             .setPackage(Constants.UNKNOWN)
-            .setController(info.t ?? [])
-            .setRemark(info.m ?? '')
+            .setController(info.getControllers())
+            .setRemark(info.getRemark())
             .setExt({})
-            .setFlashId(info.id);
+            .setFlashId(info.getFlashIds());
           results[partNumber] = flashInfo;
 
           if (limit > 0 && Object.keys(results).length >= limit) {
