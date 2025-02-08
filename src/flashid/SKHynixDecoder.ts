@@ -2,29 +2,66 @@ import { FlashIdDecoder } from './FlashIdDecoder.js';
 import { FlashIdInfo } from '../types/FlashIdInfo.js';
 import { Constants } from '../types/Constants.js';
 import { IdDefinition } from '../types/IdDefinition.js';
-import { SamsungDecoder } from './SamsungDecoder.js';
 
 export class SKHynixDecoder extends FlashIdDecoder {
   protected static readonly ID_DEFINITION: IdDefinition = {
     "2": {
       density: {
-        dq: [7, 6, 5, 4, 3, 2, 1, 0],
+        dq: [4, 3, 2, 1, 0],
         def: {
-          0xD3: Constants.DENSITY_GBITS.multiply(8),
-          0xD5: Constants.DENSITY_GBITS.multiply(16),
-          0xD7: Constants.DENSITY_GBITS.multiply(32),
-          0xDE: Constants.DENSITY_GBITS.multiply(64),
-          0x3A: Constants.DENSITY_GBITS.multiply(128),
-          0x5A: Constants.DENSITY_GBITS.multiply(128),
-          0x3C: Constants.DENSITY_GBITS.multiply(256),
-          0x5C: Constants.DENSITY_GBITS.multiply(256),
-          0x3E: Constants.DENSITY_GBITS.multiply(512),
-          0x5E: Constants.DENSITY_GBITS.multiply(512),
-          0x89: Constants.DENSITY_TBITS.multiply(1)
+          0b10011: Constants.DENSITY_GBITS.multiply(8),
+          0b10101: Constants.DENSITY_GBITS.multiply(16),
+          0b10111: Constants.DENSITY_GBITS.multiply(32),
+          0b11010: Constants.DENSITY_GBITS.multiply(128),
+          0b11100: Constants.DENSITY_GBITS.multiply(256),
+          0b11110: Constants.DENSITY_GBITS.multiply(512),
+          0b11111: Constants.DENSITY_TBITS.multiply(1)
         }
       }
     },
-    "3": SamsungDecoder.ID_DEFINITION[3],
+    "3": {
+      die: {
+        dq: [1, 0],
+        def: {
+          0b00: 1,
+          0b01: 2,
+          0b10: 4,
+          0b11: 8
+        }
+      },
+      cellLevel: {
+        dq: [3, 2],
+        def: {
+          0b00: 1,
+          0b01: 2,
+          0b10: 3,
+          0b11: 4
+        }
+      },
+      "ext:simultaneouslyProgrammedPages": {
+        dq: [5, 4],
+        def: {
+          0b00: "1",
+          0b01: "2",
+          0b10: "4",
+          0b11: "8"
+        }
+      },
+      "ext:interleave": {
+        dq: [6],
+        def: {
+          0: "false",
+          1: "true"
+        }
+      },
+      "ext:cache": {
+        dq: [7],
+        def: {
+          0: "false",
+          1: "true"
+        }
+      }
+    },
     "4": {
       pageSize: {
         dq: [1, 0],
@@ -41,21 +78,16 @@ export class SKHynixDecoder extends FlashIdDecoder {
           0b000: 128,
           0b001: 256,
           0b010: 512,
-          0b011: 768,
-          0b100: 1024,
-          0b101: 2048
+          0b011: 1024
         }
       },
       "ext:redundantAreaSize": {
         dq: [6, 3, 2],
         def: {
-          0b110: "640B",
-          0b010: "448B",
-          0b001: "224B",
-          0b000: "128B",
-          0b011: "64B",
-          0b100: "32B",
-          0b101: "16B"
+          0b001: "128B",
+          0b010: "218B",
+          0b011: "400B",
+          0b100: "436B"
         }
       }
     },
@@ -72,14 +104,12 @@ export class SKHynixDecoder extends FlashIdDecoder {
       "ext:eccLevel": {
         dq: [6, 5, 4],
         def: {
-          0b000: "None",
-          0b001: "1bit/512B",
-          0b010: "2bit/512B",
-          0b011: "4bit/512B",
-          0b100: "8bit/512B",
-          0b101: "24bit/512B",
-          0b110: "32bit/1KB",
-          0b111: "40bit/1KB"
+          0b000: "1bit/512B",
+          0b001: "2bit/512B",
+          0b010: "4bit/512B",
+          0b011: "8bit/512B",
+          0b100: "16bit/512B",
+          0b101: "24bit/1KB"
         }
       }
     },
@@ -87,14 +117,20 @@ export class SKHynixDecoder extends FlashIdDecoder {
       processNode: {
         dq: [3, 2, 1, 0],
         def: {
-          0x0: "48nm",
-          0x1: "41nm",
-          0x2: "32nm",
-          0x3: "26nm",
-          0x4: "20nm",
-          0x5: "16nm",
-          0x9: "16nm",
-          0xA: "16nm"
+          0x0: "50nm",
+          0x1: "40nm",
+          0x2: "30nm",
+          0x3: "27nm",
+          0x4: "21nm",
+          0x5: "19nm",
+          0x6: "16nm",
+          0x7: "24L 3DV1",
+          0x8: "32L 3DV2",
+          0x9: "48L 3DV3",
+          0xA: "14nm",
+          0xB: "64L 3DV4",
+          0xC: "92L 3DV5",
+          0xD: "128L 3DV6"
         }
       },
       "ext:edo": {
@@ -107,24 +143,8 @@ export class SKHynixDecoder extends FlashIdDecoder {
       "ext:interface": {
         dq: [7],
         def: {
-          0: "Async Only",
-          1: "Async and Sync"
-        }
-      }
-    }
-  };
-
-  protected static readonly NEW_ID_DEFINITION: IdDefinition = {
-    "6": {
-      processNode: {
-        dq: [7, 6, 5, 4],
-        def: {
-          0x5: "14nm",
-          0x7: "36L 3DV2",
-          0x8: "48L 3DV3",
-          0x9: "72L 3DV4",
-          0xA: "96L 3DV5",
-          0xB: "128L 3DV6"
+          0: "Conventional",
+          1: "ToggleDDR"
         }
       }
     }
@@ -136,16 +156,12 @@ export class SKHynixDecoder extends FlashIdDecoder {
 
   public decode(id: number): FlashIdInfo {
     const info = super.decode(id);
-    const spp = info.ext["simultaneouslyProgrammedPages"];
+    const spp = info.getExt()["simultaneouslyProgrammedPages"];
     if (spp) {
-      info.setPlane(spp);
-    }
-    if (FlashIdDecoder.getByte(id, 2) === 0xDE) {
-      info.setDensity(Constants.DENSITY_GBITS.multiply(64));
-    }
-    if (FlashIdDecoder.getByte(id, 6) >= 0x50) {
-      info.setExt({}).setBlockSize(null);
-      this.decodeIdDef(id, SKHynixDecoder.NEW_ID_DEFINITION, info);
+      info.setExt({
+        ...info.getExt(),
+        "simultaneouslyProgrammedPages": parseInt(spp, 10)
+      });
     }
     return info;
   }
