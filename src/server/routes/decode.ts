@@ -16,7 +16,7 @@ export const decodeRoute: ServerRoute = {
     try {
       const { pn } = request.query as { pn: string };
       const info = FlashDetector.detect(pn);
-      return h.response(info).type('application/json');
+      return h.response(info || {}).type('application/json');
     } catch (error) {
       return h.response({
         error: error instanceof Error ? error.message : 'Unknown error'

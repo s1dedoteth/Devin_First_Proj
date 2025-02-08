@@ -32,6 +32,18 @@ export class FlashDetector {
     return FlashDetector.instance;
   }
 
+  public static initialize(): void {
+    FlashDetector.getInstance();
+  }
+
+  public static detect(pn: string): FlashInfo | null {
+    return FlashDetector.getInstance().decode(pn);
+  }
+
+  public static decodeFlashId(id: string): FlashInfo | null {
+    return FlashDetector.getInstance().decodeId(id);
+  }
+
   private registerDecoders(): void {
     this.decoders = [
       new MicronDecoder(),
@@ -59,5 +71,11 @@ export class FlashDetector {
       }
     }
     return null;
+  }
+
+  public decodeId(id: string): FlashInfo | null {
+    const cleanId = id.trim().toUpperCase();
+    const info = this.dbManager.getFlashId(cleanId);
+    return info ? info.toFlashInfo() : null;
   }
 }

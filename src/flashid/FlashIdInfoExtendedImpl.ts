@@ -1,5 +1,7 @@
 import { FlashIdInfo } from './FlashIdInfo.js';
 import type { FlashIdInfoExtended } from '../types/FlashIdInfoExtended.js';
+import { FlashInfo } from '../types/FlashInfo.js';
+import { FlashInfoImpl } from '../core/FlashInfoImpl.js';
 
 export class FlashIdInfoExtendedImpl extends FlashIdInfo implements FlashIdInfoExtended {
   protected _die: number = 0;
@@ -48,5 +50,17 @@ export class FlashIdInfoExtendedImpl extends FlashIdInfo implements FlashIdInfoE
   public setPartNumbers(partNumbers: string[]): this {
     this._partNumbers = partNumbers;
     return this;
+  }
+
+  public toFlashInfo(): FlashInfo {
+    const info = new FlashInfoImpl();
+    info.setType(this.getType())
+      .setVendor(this.getVendor())
+      .setCellLevel(this.getCellLevel())
+      .setDensity(this.getDensity())
+      .setProcessNode(this.getProcessNode())
+      .setVoltage(this.getVoltage())
+      .setExt(this.getExt());
+    return info;
   }
 }

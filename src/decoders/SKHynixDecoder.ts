@@ -49,6 +49,6 @@ export class SKHynixDecoder extends AbstractDecoder {
   }
 
   public getFlashInfoFromFdb(info: FlashInfo): FlashInfo | null {
-    return this.getFlashInfoFromFdbImpl(info);
+    return info;
   }
 }

@@ -53,6 +53,6 @@ export class YangtzeDecoder extends AbstractDecoder {
   }
 
   public getFlashInfoFromFdb(info: FlashInfo): FlashInfo | null {
-    return this.getFlashInfoFromFdbImpl(info);
+    return info;
   }
 }

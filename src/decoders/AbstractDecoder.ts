@@ -7,17 +7,17 @@ export abstract class AbstractDecoder {
   public abstract check(pn: string): boolean;
 
   constructor(
-    protected readonly vendor: string,
-    protected readonly type: string,
-    protected readonly processNode: string,
-    protected readonly cellLevel: string,
-    protected readonly voltage: string,
+    protected readonly vendor: string = '',
+    protected readonly type: string = 'NAND',
+    protected readonly processNode: string = '20nm',
+    protected readonly cellLevel: string = 'MLC',
+    protected readonly voltage: string = '3.3V',
     protected readonly classification: {
       ce: number;
       ch: number;
       die: number;
       rb: number;
-    }
+    } = { ce: 1, ch: 1, die: 1, rb: 1 }
   ) {}
 
   public decode(pn: string): FlashInfo {
